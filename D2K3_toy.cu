@@ -244,7 +244,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 	dtop0pp->daug3Mass  = D3Mass;
 	dtop0pp->meson_radius  = 1.5; 
 
-	ResonancePdf* rhop  = new ResonancePdf("rhop",
+	auto rhop  = new Resonances::RBW("rhop",
 			Variable("rhop_amp_real", 1),
 			Variable("rhop_amp_imag", 0),
 			fixedRhoMass,
@@ -342,7 +342,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			1,
 			PAIR_13);
 
-	ResonancePdf* f0_980  = new ResonancePdf("f0_980", 
+	auto f0_980  = new Resonances::FLATTE("f0_980", 
 			fixAmps ? Variable("f0_980_amp_real",  0.008 * (-MMass2)) : 
 			Variable("f0_980_amp_real",  0.008 * (-MMass2), 0.001, 0, 0),
 			fixAmps ? Variable("f0_980_amp_imag", -0.013 * (-MMass2)) : 
@@ -351,7 +351,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			Variable("f0_980_width",    0.199/*0.044*/, 0.001, 0.001, 0.08),
 			Variable("f0_980_rg2og1",    3.0, 0.1, 1e-3, 10),
 			//							       (unsigned int)0,
-			PAIR_23, RES_FLATTE);
+			PAIR_23);
 
 	ResonancePdf* f0_1370  = new ResonancePdf("f0_1370", 
 			fixAmps ? Variable("f0_1370_amp_real", -0.058 * (-MMass2)) : 
@@ -403,7 +403,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			(unsigned int)0,
 			PAIR_23);
 
-	ResonancePdf* nonr  = new ResonancePdf("nonr",
+	ResonancePdf* nonr  = new Resonances::NonRes("nonr",
 			fixAmps ? Variable("nonr_amp_real", 0.5595 * (-1)) : 
 			Variable("nonr_amp_real", 0.5595 * (-1),   0.001, 0, 0),
 			fixAmps ? Variable("nonr_amp_imag", -0.108761 * (-1)) : 
