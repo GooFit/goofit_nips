@@ -1,15 +1,15 @@
 // ROOT stuff
-#include "TRandom.hh"
-#include "TCanvas.h" 
-#include "TFile.h" 
-#include "TH1F.h" 
-#include "TH2F.h" 
-#include "TStyle.h" 
-#include "TRandom3.hh" 
-#include "TLegend.h" 
-#include "TText.h" 
-#include "TLine.h" 
-
+#include <TRandom.h>
+#include <TCanvas.h> 
+#include <TFile.h> 
+#include <TH1F.h> 
+#include <TH2F.h>
+#include <TStyle.h> 
+#include <TRandom3.h> 
+#include <TLegend.h> 
+#include <TText.h> 
+#include <TLine.h> 
+#include <TMath.h>
 // System stuff
 #include <fstream> 
 #include <sys/time.h>
@@ -37,9 +37,9 @@ clock_t startCPU, stopCPU;
 tms startProc, stopProc; 
 UnbinnedDataSet* data = 0; 
 
-Observable m12 ;// Add here
-Observable m13 ;// Add here
-Variable eventNumber = 0; 
+Observable m12("m12",   0.0, 3.0);
+Observable m13("m13",   0.0, 3.0);
+EventNumber eventNumber("eventNumber");
 bool fitMasses = false; 
 Variable fixedRhoMass("rho_mass", 0.7758, 0.01, 0.7, 0.8);
 Variable fixedRhoWidth("rho_width", 0.1503, 0.01, 0.1, 0.2); 
@@ -47,7 +47,6 @@ Variable fixedRhoWidth("rho_width", 0.1503, 0.01, 0.1, 0.2);
 const fptype _mD0 = 1.86484; 
 const fptype piPlusMass = 0.13957018;
 const fptype piZeroMass = 0.1349766;
-
 const fptype D1Mass = piZeroMass;
 const fptype D2Mass = piPlusMass;
 const fptype D3Mass = piPlusMass;
@@ -59,7 +58,7 @@ const fptype MMass2 = MMass*MMass;
 const fptype MMass2inv = 1./MMass2; 
 
 // Constants used in more than one PDF component. 
-Variable motherM("motherM", MMass);
+Variable  motherM("motherM", MMass);
 Variable dau1M("dau1M", D1Mass);
 Variable dau2M("dau2M", D2Mass);
 Variable dau3M("dau3M", D3Mass);
@@ -75,54 +74,55 @@ double mesonRad  = 1.5;
 DalitzPlotPdf* signalDalitz; 
 
 void makeToyDalitzData (GooPdf* overallSignal, const int iSeed = 0, string datadir = ".", const int nTotal = 1e5 ) ;
+
 DalitzPlotPdf* makeSignalPdf (GooPdf* eff = 0) ;
 
 fptype cpuGetM23 (fptype massPZ, fptype massPM) {
-	return (massSum->value - massPZ - massPM); 
+	return (massSum.getValue() - massPZ - massPM); 
 }
 
 bool cpuDalitz (fptype m_12, fptype m_13, fptype bigM = MMass, fptype dm1 = D1Mass, fptype dm2 = D2Mass, fptype dm3 = D3Mass) {
-	if (m_12 < POW(dm1 + dm2, 2)) return false; // This m_12 cannot exist, it's less than the square of the (1,2) particle mass.
-	if (m_12 > POW(bigM - dm3, 2)) return false;   // This doesn't work either, there's no room for an at-rest 3 daughter. 
+	if (m_12 < pow(dm1 + dm2, 2)) return false; // This m_12 cannot exist, it's less than the square of the (1,2) particle mass.
+	if (m_12 > pow(bigM - dm3, 2)) return false;   // This doesn't work either, there's no room for an at-rest 3 daughter. 
 
 	// Calculate energies of 1 and 3 particles in m_12 rest frame. 
 	fptype e1star = 0.5 * (m_12 - dm2*dm2 + dm1*dm1) / sqrt(m_12); 
 	fptype e3star = 0.5 * (bigM*bigM - m_12 - dm3*dm3) / sqrt(m_12); 
 
 	// Bounds for m_13 at this value of m_12.
-	fptype minimum = POW(e1star + e3star, 2) - POW(sqrt(e1star*e1star - dm1*dm1) + sqrt(e3star*e3star - dm3*dm3), 2);
+	fptype minimum = pow(e1star + e3star, 2) - pow(sqrt(e1star*e1star - dm1*dm1) + sqrt(e3star*e3star - dm3*dm3), 2);
 	if (m_13 < minimum) return false;
-	fptype maximum = POW(e1star + e3star, 2) - POW(sqrt(e1star*e1star - dm1*dm1) - sqrt(e3star*e3star - dm3*dm3), 2);
+	fptype maximum = pow(e1star + e3star, 2) - pow(sqrt(e1star*e1star - dm1*dm1) - sqrt(e3star*e3star - dm3*dm3), 2);
 	if (m_13 > maximum) return false;
 
 	return true; 
 }
 
 void makeToyDalitzData (GooPdf* overallSignal, const int iSeed, string datadir, const int nTotal ) {
-	std::vector<Variable> vars;
+	std::vector<Observable> vars;
 	vars.push_back(m12);
 	vars.push_back(m13);
-	vars.push_back(eventNumber); 
+	vars.push_back(eventNumber);
 	data = new UnbinnedDataSet(vars);
 	UnbinnedDataSet currData(vars); 
-	std::vector<std::vector<double> > pdfValues;
+	std::vector<std::vector<double>> pdfValues;
 	int ncount = 0;
 	TRandom3 donram(iSeed); 
-	for (int i = 0; i < m12->numbins; ++i) {
-		m12->value = m12->lowerlimit + (m12->upperlimit - m12->lowerlimit)*(i + 0.5) / m12->numbins; 
-		for (int j = 0; j < m13->numbins; ++j) {
-			m13->value = m13->lowerlimit + (m13->upperlimit - m13->lowerlimit)*(j + 0.5) / m13->numbins; 
-			if (!cpuDalitz(m12->value, m13->value, _mD0, piZeroMass, piPlusMass, piPlusMass)) continue;
-			eventNumber->value = ncount;
+	for (int i = 0; i < (m12.getNumBins()) ; ++i) {
+		m12.setValue( m12.getLowerLimit() + (m12.getUpperLimit() - m12.getLowerLimit())*(i + 0.5) / m12.getNumBins() ); 
+		for (int j = 0; j < m13.getNumBins(); ++j) {
+			m13.setValue(m13.getLowerLimit() + (m13.getUpperLimit() - m13.getLowerLimit())*(j + 0.5) / m13.getNumBins()); 
+			if (!cpuDalitz(m12.getValue(), m13.getValue(), _mD0, piZeroMass, piPlusMass, piPlusMass)) continue;
+			eventNumber.setValue(ncount);
 			ncount++;
 			currData.addEvent(); 
 		}
 	}
 	signalDalitz->setDataSize(currData.getNumEvents());
 	overallSignal->setData(&currData);
-	//    std::vector<std::vector<double> > pdfValues;
-	overallSignal->getCompProbsAtDataPoints(pdfValues);
-	TH2F dalitzpp0_dat_hist("dalitzpp0_dat_hist", "", m12->numbins, m12->lowerlimit, m12->upperlimit, m13->numbins, m13->lowerlimit, m13->upperlimit);
+	
+	pdfValues = overallSignal->getCompProbsAtDataPoints();
+	TH2F dalitzpp0_dat_hist("dalitzpp0_dat_hist", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit(), m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
 	dalitzpp0_dat_hist.GetXaxis()->SetTitle("m^{2}(#pi^{+}#pi^{0}) [GeV^{2}]");
 	dalitzpp0_dat_hist.GetYaxis()->SetTitle("m^{2}(#pi^{-} #pi^{0}) [GeV^{2}]");
 	ncount = 0;
@@ -141,7 +141,7 @@ void makeToyDalitzData (GooPdf* overallSignal, const int iSeed, string datadir, 
 	for (int iEvt = 0;iEvt<nEvents;iEvt++){
 		double r = donram.Rndm();
 		//Binary search for fIntegral[cell-1] < r < fIntegral[cell]
-		int lo = 0, hi = ncells-1, mid;
+		int lo = 0, hi = ncells-1, mid = 0;
 		while(lo <= hi){
 			mid = lo + (hi-lo)/2;
 			if( r<=fIntegral[mid]&&(mid==0||r>fIntegral[mid-1])) break;
@@ -150,16 +150,16 @@ void makeToyDalitzData (GooPdf* overallSignal, const int iSeed, string datadir, 
 		}
 		int j = mid;
 		double currm12 = currData.getValue(m12, j);
-		currm12 += (m12->upperlimit - m12->lowerlimit)*(donram.Rndm() - 0.5) / m12->numbins;
+		currm12 += (m12.getUpperLimit() - m12.getLowerLimit())*(donram.Rndm() - 0.5) / m12.getNumBins();
 		double currm13 = currData.getValue(m13, j);
-		currm13 += (m13->upperlimit - m13->lowerlimit)*(donram.Rndm() - 0.5) / m13->numbins;
-		eventNumber->value = ncount++;
+		currm13 += (m13.getUpperLimit() - m13.getLowerLimit())*(donram.Rndm() - 0.5) / m13.getNumBins();
+		eventNumber.setValue(ncount++);
 		dalitzpp0_dat_hist.Fill(currm12, currm13);
 		data->addEvent();
 		writer << ncount-1 << '\t'<<currm12 << '\t'<<currm13<<std::endl;
 	}
 	writer.close(); 
-	std::cout<<"Entries generated: "<<data->numEvents()<<std::endl;
+	std::cout<<"Entries generated: "<<data->getNumEvents()<<std::endl;
 	foodal->cd(); 
 	foodal->SetLogz(false);
 	dalitzpp0_dat_hist.Draw("colz");
@@ -167,12 +167,12 @@ void makeToyDalitzData (GooPdf* overallSignal, const int iSeed, string datadir, 
 }
 
 void runToyGeneration(int numFile = 0){
-	m12   = Variable("m12",   0.0, 3.0);
-	m12->numbins = 1500;
+	m12   = Observable("m12",   0.0, 3.0);
+	m12.setNumBins(1500);
 	//  m12   = Variable("m12",   0.4, 3.0);
-	m13   = Variable("m13",   0.0, 3.0); 
-	m13->numbins = 1500;
-	eventNumber = Variable("eventNumber", 0, INT_MAX);
+	m13   = Observable("m13",   0.0, 3.0); 
+	m13.setNumBins(1500);
+	eventNumber = EventNumber("eventNumber", 0, INT_MAX);
 	signalDalitz = makeSignalPdf(); 
 	vector<PdfBase*> comps;
 	comps.clear(); 
@@ -189,8 +189,8 @@ void runToyGeneration(int numFile = 0){
 }
 
 void getToyData (std::string toyFileName) {
-	TH2F dalitzplot("dalitzplot", "", m12->numbins, m12->lowerlimit, m12->upperlimit, m13->numbins, m13->lowerlimit, m13->upperlimit); 
-	std::vector<Variable> vars;
+	TH2F dalitzplot("dalitzplot", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit(), m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit()); 
+	std::vector<Observable> vars;
 	vars.push_back(m12);
 	vars.push_back(m13);
 	vars.push_back(eventNumber); 
@@ -208,14 +208,14 @@ void getToyData (std::string toyFileName) {
 	while (!reader.eof()) {
 		reader >> dummy;
 		if (oldtype) reader >> dummy;
-		reader >> m12->value; 
-		reader >> m13->value;
+		reader >> m12; 
+		reader >> m13;
 		if (oldtype) { for (int i=0;i<16;i++) reader >> dummy; }
 
-		eventNumber->value = data->getNumEvents(); 
+		eventNumber.setValue(data->getNumEvents()); 
 		data->addEvent(); 
 
-		dalitzplot.Fill(m12->value, m13->value); 
+		dalitzplot.Fill(m12.getValue(), m13.getValue()); 
 	}
 	reader.close();
 
@@ -227,22 +227,30 @@ void getToyData (std::string toyFileName) {
 GooPdf* makeKzeroVeto () {
 	if (kzero_veto) return kzero_veto; 
 
-	VetoInfo* kVetoInfo = new VetoInfo();
+	
+	Variable minimum("veto_min",0.475*0.475);
+	Variable maximum("veto_max", 0.505*0.505);
+	VetoInfo kVetoInfo(minimum,maximum,PAIR_23);	
+
+	/*VetoInfo* kVetoInfo = new VetoInfo();	
 	kVetoInfo->cyclic_index = PAIR_23; 
 	kVetoInfo->minimum = Variable("veto_min", 0.475*0.475);
-	kVetoInfo->maximum = Variable("veto_max", 0.505*0.505);
-	vector<VetoInfo*> vetos; vetos.push_back(kVetoInfo); 
-	kzero_veto = new DalitzVetoPdf("kzero_veto", m12, m13, motherM, dau1M, dau2M, dau3M, vetos); 
+	kVetoInfo->maximum = Variable("veto_max", 0.505*0.505);*/
+
+	vector<VetoInfo> vetos; vetos.push_back(kVetoInfo); 
+        kzero_veto = new DalitzVetoPdf("kzero_veto", m12, m13, motherM, dau1M, dau2M, dau3M, vetos); 
+
+	
 	return kzero_veto;
 }
 
 DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
-	DecayInfo3 dtop0pp = new DecayInfo();
-	dtop0pp->motherMass  = MMass; 
-	dtop0pp->daug1Mass  = D1Mass;
-	dtop0pp->daug2Mass  = D2Mass;
-	dtop0pp->daug3Mass  = D3Mass;
-	dtop0pp->meson_radius  = 1.5; 
+	DecayInfo3 dtop0pp;
+	dtop0pp.motherMass  = MMass; 
+	dtop0pp.daug1Mass  = D1Mass;
+	dtop0pp.daug2Mass  = D2Mass;
+	dtop0pp.daug3Mass  = D3Mass;
+	dtop0pp.meson_radius  = 1.5; 
 
 	auto rhop  = new Resonances::RBW("rhop",
 			Variable("rhop_amp_real", 1),
@@ -255,7 +263,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 
 	bool fixAmps = false;
 
-	ResonancePdf* rhom  = new ResonancePdf("rhom", 
+	ResonancePdf* rhom  = new Resonances::RBW("rhom", 
 			fixAmps ? Variable("rhom_amp_real", 0.714) : 
 			Variable("rhom_amp_real",  0.714, 0.001, 0, 0),
 			fixAmps ? Variable("rhom_amp_imag", -0.025) :
@@ -265,7 +273,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			1,
 			PAIR_13);
 
-	ResonancePdf* rho0  = new ResonancePdf("rho0", 
+	ResonancePdf* rho0  = new Resonances::RBW("rho0", 
 			fixAmps ? Variable("rho0_amp_real", 0.565) : 
 			Variable("rho0_amp_real", 0.565, 0.001, 0, 0),
 			fixAmps ? Variable("rho0_amp_imag", 0.164) :
@@ -278,7 +286,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 	Variable sharedMass("rhop_1450_mass", 1.465, 0.01, 1.0, 2.0);
 	Variable shareWidth("rhop_1450_width", 0.400, 0.01, 0.01, 5.0); 
 
-	ResonancePdf* rhop_1450  = new ResonancePdf("rhop_1450", 
+	ResonancePdf* rhop_1450  = new Resonances::RBW("rhop_1450", 
 			fixAmps ? Variable("rhop_1450_amp_real", -0.174) : 
 			Variable("rhop_1450_amp_real", -0.174, 0.001, 0, 0),
 			fixAmps ? Variable("rhop_1450_amp_imag", -0.117) :
@@ -288,7 +296,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			1,
 			PAIR_12);
 
-	ResonancePdf* rho0_1450  = new ResonancePdf("rho0_1450", 
+	ResonancePdf* rho0_1450  = new Resonances::RBW("rho0_1450", 
 			fixAmps ? Variable("rho0_1450_amp_real", 0.325) : 
 			Variable("rho0_1450_amp_real", 0.325, 0.001, 0, 0),
 			fixAmps ? Variable("rho0_1450_amp_imag", 0.057) : 
@@ -298,7 +306,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			1,
 			PAIR_23);
 
-	ResonancePdf* rhom_1450  = new ResonancePdf("rhom_1450", 
+	ResonancePdf* rhom_1450  = new Resonances::RBW("rhom_1450", 
 			fixAmps ? Variable("rhom_1450_amp_real", 0.788) : 
 			Variable("rhom_1450_amp_real", 0.788, 0.001, 0, 0),
 			fixAmps ? Variable("rhom_1450_amp_imag", 0.226) : 
@@ -312,7 +320,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 	shareWidth = Variable("rhop_1700_width", 0.250, 0.01, 0.1, 1.0); 
 
 
-	ResonancePdf* rhop_1700  = new ResonancePdf("rhop_1700", 
+	ResonancePdf* rhop_1700  = new Resonances::RBW("rhop_1700", 
 			fixAmps ? Variable("rhop_1700_amp_real", 2.151) : 
 			Variable("rhop_1700_amp_real",  2.151, 0.001, 0, 0),
 			fixAmps ? Variable("rhop_1700_amp_imag", -0.658) : 
@@ -322,7 +330,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			1,
 			PAIR_12);
 
-	ResonancePdf* rho0_1700  = new ResonancePdf("rho0_1700", 
+	ResonancePdf* rho0_1700  = new Resonances::RBW("rho0_1700", 
 			fixAmps ? Variable("rho0_1700_amp_real",  2.400) : 
 			Variable("rho0_1700_amp_real",  2.400, 0.001, 0, 0),
 			fixAmps ? Variable("rho0_1700_amp_imag", -0.734) : 
@@ -332,7 +340,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			1,
 			PAIR_23);
 
-	ResonancePdf* rhom_1700  = new ResonancePdf("rhom_1700", 
+	ResonancePdf* rhom_1700  = new Resonances::RBW("rhom_1700", 
 			fixAmps ? Variable("rhom_1700_amp_real",  1.286) : 
 			Variable("rhom_1700_amp_real",  1.286, 0.001, 0, 0),
 			fixAmps ? Variable("rhom_1700_amp_imag", -1.532) : 
@@ -343,17 +351,14 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			PAIR_13);
 
 	auto f0_980  = new Resonances::FLATTE("f0_980", 
-			fixAmps ? Variable("f0_980_amp_real",  0.008 * (-MMass2)) : 
-			Variable("f0_980_amp_real",  0.008 * (-MMass2), 0.001, 0, 0),
-			fixAmps ? Variable("f0_980_amp_imag", -0.013 * (-MMass2)) : 
-			Variable("f0_980_amp_imag", -0.013 * (-MMass2), 0.1, 0, 0),  
+			fixAmps ? Variable("f0_980_amp_real",  0.008 * (-MMass2)) : Variable("f0_980_amp_real",  0.008 * (-MMass2), 0.001, 0, 0),
+			fixAmps ? Variable("f0_980_amp_imag", -0.013 * (-MMass2)) : Variable("f0_980_amp_imag", -0.013 * (-MMass2), 0.1, 0, 0),  
 			Variable("f0_980_mass",     0.9399/*0.980*/, 0.01, 0.8, 1.2),
 			Variable("f0_980_width",    0.199/*0.044*/, 0.001, 0.001, 0.08),
 			Variable("f0_980_rg2og1",    3.0, 0.1, 1e-3, 10),
-			//							       (unsigned int)0,
-			PAIR_23);
+			PAIR_23, false);
 
-	ResonancePdf* f0_1370  = new ResonancePdf("f0_1370", 
+	ResonancePdf* f0_1370  = new Resonances::RBW("f0_1370", 
 			fixAmps ? Variable("f0_1370_amp_real", -0.058 * (-MMass2)) : 
 			Variable("f0_1370_amp_real", -0.058 * (-MMass2), 0.001, 0, 0),
 			fixAmps ? Variable("f0_1370_amp_imag",  0.026 * (-MMass2)) : 
@@ -363,7 +368,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			(unsigned int)0,
 			PAIR_23);
 
-	ResonancePdf* f0_1500  = new ResonancePdf("f0_1500", 
+	ResonancePdf* f0_1500  = new Resonances::RBW("f0_1500", 
 			fixAmps ? Variable("f0_1500_amp_real", 0.057 * (-MMass2)) : 
 			Variable("f0_1500_amp_real", 0.057 * (-MMass2), 0.001, 0, 0),
 			fixAmps ? Variable("f0_1500_amp_imag", 0.012 * (-MMass2)) : 
@@ -373,7 +378,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			(unsigned int)0,
 			PAIR_23);
 
-	ResonancePdf* f0_1710  = new ResonancePdf("f0_1710", 
+	ResonancePdf* f0_1710  = new Resonances::RBW("f0_1710", 
 			fixAmps ? Variable("f0_1710_amp_real", 0.070 * (-MMass2)) : 
 			Variable("f0_1710_amp_real", 0.070 * (-MMass2), 0.001, 0, 0),
 			fixAmps ? Variable("f0_1710_amp_imag", 0.087 * (-MMass2)) : 
@@ -383,7 +388,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			(unsigned int)0,
 			PAIR_23);
 
-	ResonancePdf* f2_1270  = new ResonancePdf("f2_1270", 
+	ResonancePdf* f2_1270  = new Resonances::RBW("f2_1270", 
 			fixAmps ? Variable("f2_1270_amp_real", -1.027 * (-MMass2inv)) : 
 			Variable("f2_1270_amp_real", -1.027 * (-MMass2inv), 0.001, 0, 0),
 			fixAmps ? Variable("f2_1270_amp_imag", -0.162 * (-MMass2inv)) : 
@@ -393,7 +398,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			2,
 			PAIR_23);
 
-	ResonancePdf* f0_600  = new ResonancePdf("f0_600", 
+	ResonancePdf* f0_600  = new Resonances::RBW("f0_600", 
 			fixAmps ? Variable("f0_600_amp_real", 0.068 * (-MMass2)) : 
 			Variable("f0_600_amp_real", 0.068 * (-MMass2), 0.001, 0, 0),
 			fixAmps ? Variable("f0_600_amp_imag", 0.010 * (-MMass2)) : 
@@ -409,25 +414,25 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 			fixAmps ? Variable("nonr_amp_imag", -0.108761 * (-1)) : 
 			Variable("nonr_amp_imag", -0.108761* (-1), 0.1, 0, 0)); 
 
-	dtop0pp->resonances.push_back(nonr); 
-	dtop0pp->resonances.push_back(rhop);
-	dtop0pp->resonances.push_back(rho0); 
-	dtop0pp->resonances.push_back(rhom); 
-	dtop0pp->resonances.push_back(rhop_1450); 
-	dtop0pp->resonances.push_back(rho0_1450); 
-	dtop0pp->resonances.push_back(rhom_1450); 
-	dtop0pp->resonances.push_back(rhop_1700); 
-	dtop0pp->resonances.push_back(rho0_1700); 
-	dtop0pp->resonances.push_back(rhom_1700); 
-	dtop0pp->resonances.push_back(f0_980); 
-	dtop0pp->resonances.push_back(f0_1370); 
-	dtop0pp->resonances.push_back(f0_1500); 
-	dtop0pp->resonances.push_back(f0_1710); 
-	dtop0pp->resonances.push_back(f2_1270); 
-	dtop0pp->resonances.push_back(f0_600); 
+	dtop0pp.resonances.push_back(nonr); 
+	dtop0pp.resonances.push_back(rhop);
+	dtop0pp.resonances.push_back(rho0); 
+	dtop0pp.resonances.push_back(rhom); 
+	dtop0pp.resonances.push_back(rhop_1450); 
+	dtop0pp.resonances.push_back(rho0_1450); 
+	dtop0pp.resonances.push_back(rhom_1450); 
+	dtop0pp.resonances.push_back(rhop_1700); 
+	dtop0pp.resonances.push_back(rho0_1700); 
+	dtop0pp.resonances.push_back(rhom_1700); 
+	dtop0pp.resonances.push_back(f0_980); 
+	dtop0pp.resonances.push_back(f0_1370); 
+	dtop0pp.resonances.push_back(f0_1500); 
+	dtop0pp.resonances.push_back(f0_1710); 
+	dtop0pp.resonances.push_back(f2_1270); 
+	dtop0pp.resonances.push_back(f0_600); 
 
 	if (!fitMasses) {
-		for (vector<ResonancePdf*>::iterator res = dtop0pp->resonances.begin(); res != dtop0pp->resonances.end(); ++res) {
+		for (vector<ResonancePdf*>::iterator res = dtop0pp.resonances.begin(); res != dtop0pp.resonances.end(); ++res) {
 			(*res)->setParameterConstantness(true); 
 		}
 	}
@@ -476,64 +481,64 @@ void drawFitPlotsWithPulls(TH1* hd, TH1* ht, string plotdir){
 }
 
 void makeToyDalitzPdfPlots (GooPdf* overallSignal, string plotdir = "plots") {
-	TH1F m12_dat_hist("m12_dat_hist", "", m12->numbins, m12->lowerlimit, m12->upperlimit);
+	TH1F m12_dat_hist("m12_dat_hist", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit());
 	m12_dat_hist.SetStats(false); 
 	m12_dat_hist.SetMarkerStyle(8); 
 	m12_dat_hist.SetMarkerSize(1.2);
 	m12_dat_hist.GetXaxis()->SetTitle("m^{2}(#pi^{+} #pi^{0}) [GeV]");
 	sprintf(strbuffer, "Events / %.1f MeV", 1e3*m12_dat_hist.GetBinWidth(1));
 	m12_dat_hist.GetYaxis()->SetTitle(strbuffer); 
-	TH1F m12_pdf_hist("m12_pdf_hist", "", m12->numbins, m12->lowerlimit, m12->upperlimit);
+	TH1F m12_pdf_hist("m12_pdf_hist", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit());
 	m12_pdf_hist.SetStats(false); 
 	m12_pdf_hist.SetLineColor(kBlue); 
 	m12_pdf_hist.SetLineWidth(3); 
-	TH1F m13_dat_hist("m13_dat_hist", "", m13->numbins, m13->lowerlimit, m13->upperlimit);
+	TH1F m13_dat_hist("m13_dat_hist", "", m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
 	m13_dat_hist.SetStats(false); 
 	m13_dat_hist.SetMarkerStyle(8); 
 	m13_dat_hist.SetMarkerSize(1.2);
 	m13_dat_hist.GetXaxis()->SetTitle("m^{2}(#pi^{-} #pi^{0}) [GeV]");
 	sprintf(strbuffer, "Events / %.1f MeV", 1e3*m13_dat_hist.GetBinWidth(1));
 	m13_dat_hist.GetYaxis()->SetTitle(strbuffer); 
-	TH1F m13_pdf_hist("m13_pdf_hist", "", m13->numbins, m13->lowerlimit, m13->upperlimit);
+	TH1F m13_pdf_hist("m13_pdf_hist", "", m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
 	m13_pdf_hist.SetStats(false); 
 	m13_pdf_hist.SetLineColor(kBlue); 
 	m13_pdf_hist.SetLineWidth(3); 
-	TH1F m23_dat_hist("m23_dat_hist", "", m13->numbins, m13->lowerlimit, m13->upperlimit);
+	TH1F m23_dat_hist("m23_dat_hist", "", m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
 	m23_dat_hist.SetStats(false); 
 	m23_dat_hist.SetMarkerStyle(8); 
 	m23_dat_hist.SetMarkerSize(1.2);
 	m23_dat_hist.GetXaxis()->SetTitle("m^{2}(#pi^{+} #pi^{-}) [GeV]");
 	sprintf(strbuffer, "Events / %.1f MeV", 1e3*m13_dat_hist.GetBinWidth(1));
 	m23_dat_hist.GetYaxis()->SetTitle(strbuffer); 
-	TH1F m23_pdf_hist("m23_pdf_hist", "", m13->numbins, m13->lowerlimit, m13->upperlimit);
+	TH1F m23_pdf_hist("m23_pdf_hist", "", m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
 	m23_pdf_hist.SetStats(false); 
 	m23_pdf_hist.SetLineColor(kBlue); 
 	m23_pdf_hist.SetLineWidth(3); 
 	double totalPdf = 0; 
 	double totalDat = 0; 
-	TH2F dalitzpp0_dat_hist("dalitzpp0_dat_hist", "", m12->numbins, m12->lowerlimit, m12->upperlimit, m13->numbins, m13->lowerlimit, m13->upperlimit);
+	TH2F dalitzpp0_dat_hist("dalitzpp0_dat_hist", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit(), m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
 	dalitzpp0_dat_hist.SetStats(false); 
 	dalitzpp0_dat_hist.GetXaxis()->SetTitle("m^{2}(#pi^{+} #pi^{0}) [GeV]");
 	dalitzpp0_dat_hist.GetYaxis()->SetTitle("m^{2}(#pi^{-} #pi^{0}) [GeV]");
-	TH2F dalitzpp0_pdf_hist("dalitzpp0_pdf_hist", "", m12->numbins, m12->lowerlimit, m12->upperlimit, m13->numbins, m13->lowerlimit, m13->upperlimit);
+	TH2F dalitzpp0_pdf_hist("dalitzpp0_pdf_hist", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit(), m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
 	/*  dalitzpp0_pdf_hist.GetXaxis()->SetTitle("m^{2}(K^{-} #pi^{0}) [GeV^{2}]");
 		dalitzpp0_pdf_hist.GetYaxis()->SetTitle("m^{2}(K^{-} #pi^{+}) [GeV^{2}]");*/
 	dalitzpp0_pdf_hist.GetXaxis()->SetTitle("m^{2}(#pi^{+} #pi^{0}) [GeV^{2}]");
 	dalitzpp0_pdf_hist.GetYaxis()->SetTitle("m^{2}(#pi^{-} #pi^{0}) [GeV^{2}]");
 	dalitzpp0_pdf_hist.SetStats(false); 
-	std::vector<Variable> vars;
+	std::vector<Observable> vars;
 	vars.push_back(m12);
 	vars.push_back(m13);
 	vars.push_back(eventNumber); 
 	UnbinnedDataSet currData(vars); 
 	int evtCounter = 0; 
 
-	for (int i = 0; i < m12->numbins; ++i) {
-		m12->value = m12->lowerlimit + (m12->upperlimit - m12->lowerlimit)*(i + 0.5) / m12->numbins; 
-		for (int j = 0; j < m13->numbins; ++j) {
-			m13->value = m13->lowerlimit + (m13->upperlimit - m13->lowerlimit)*(j + 0.5) / m13->numbins; 
-			if (!cpuDalitz(m12->value, m13->value, _mD0, piZeroMass, piPlusMass, piPlusMass)) continue;
-			eventNumber->value = evtCounter; 
+	for (int i = 0; i < m12.getNumBins(); ++i) {
+		m12.setValue(m12.getLowerLimit() + (m12.getUpperLimit() - m12.getLowerLimit())*(i + 0.5) / m12.getNumBins()); 
+		for (int j = 0; j < m13.getNumBins(); ++j) {
+			m13.setValue(m13.getLowerLimit() + (m13.getUpperLimit() - m13.getLowerLimit())*(j + 0.5) / m13.getNumBins()); 
+			if (!cpuDalitz(m12.getValue(), m13.getValue(), _mD0, piZeroMass, piPlusMass, piPlusMass)) continue;
+			eventNumber.setValue(evtCounter); 
 			evtCounter++;
 			currData.addEvent(); 
 		}
@@ -541,7 +546,7 @@ void makeToyDalitzPdfPlots (GooPdf* overallSignal, string plotdir = "plots") {
 	overallSignal->setData(&currData);
 	signalDalitz->setDataSize(currData.getNumEvents()); 
 	std::vector<std::vector<double> > pdfValues;
-	overallSignal->getCompProbsAtDataPoints(pdfValues);
+	pdfValues = overallSignal->getCompProbsAtDataPoints();
 	for (unsigned int j = 0; j < pdfValues[0].size(); ++j) {
 		double currm12 = currData.getValue(m12, j);
 		double currm13 = currData.getValue(m13, j);
@@ -579,11 +584,11 @@ void makeToyDalitzPdfPlots (GooPdf* overallSignal, string plotdir = "plots") {
 }
 
 void runToyFit (std::string toyFileName) {
-	m12 = Variable("m12", 0, 3);
-	m13 = Variable("m13", 0, 3); 
-	m12->numbins = 300;
-	m13->numbins = 300;
-	eventNumber = Variable("eventNumber", 0, INT_MAX);
+	m12 = Observable("m12", 0, 3);
+	m13 = Observable("m13", 0, 3); 
+	m12.setNumBins(300);
+	m13.setNumBins(300);
+	eventNumber = EventNumber("eventNumber", 0, INT_MAX);
 	getToyData(toyFileName);
 
 	// EXERCISE 1 (real part): Create a PolynomialPdf which models
@@ -610,8 +615,8 @@ void runToyFit (std::string toyFileName) {
 	gettimeofday(&stopTime, NULL);
 
 	//Get the fractions w/ uncertainties
-	vector<double> fracList;
-	signalDalitz->getFractions(fracList);
+	//vector<double> fracList;
+	//signalDalitz->getFractions(fracList);
 	/*  const int nRes = fracList.size();
 		vector <float> fractions[nRes];
 		float mean[nRes];
