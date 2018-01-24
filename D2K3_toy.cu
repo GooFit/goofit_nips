@@ -562,6 +562,9 @@ void makeToyDalitzPdfPlots (GooPdf* overallSignal, string plotdir = "plots") {
 	foodal->cd(); 
 	foodal->SetLogz(false);
 	dalitzpp0_pdf_hist.Draw("colz");
+    std::string command = "mkdir -p " + plotdir;
+    if (system(command.c_str()) != 0)
+        throw GooFit::GeneralError("Making plot directory {} failed", plotdir);
 	foodal->SaveAs((plotdir + "/dalitzpp0_pdf.png").c_str());
 	/*  m12_pdf_hist.Draw("");
 		foodal->SaveAs((plotdir + "/m12_pdf_hist.png").c_str());
