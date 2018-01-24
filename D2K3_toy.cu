@@ -70,6 +70,9 @@ Variable constantZero("constantZero", 0);
 
 std::vector<PdfBase*> comps;
 
+// I don't like Globals! Henry
+int verbosity = 3;
+
 GooPdf* kzero_veto = 0; 
 char strbuffer[1000]; 
 double mesonRad  = 1.5;
@@ -246,13 +249,16 @@ GooPdf* makeKzeroVeto () {
 	return kzero_veto;
 }
 
-DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
+DalitzPlotPdf* makeSignalPdf (GooPdf* eff /* Some on/off switch or similar */) {
 	DecayInfo3 dtop0pp;
 	dtop0pp.motherMass  = MMass; 
 	dtop0pp.daug1Mass  = D1Mass;
 	dtop0pp.daug2Mass  = D2Mass;
 	dtop0pp.daug3Mass  = D3Mass;
 	dtop0pp.meson_radius  = 1.5; 
+
+
+    // Make a random number generater heres
 
 	auto rhop  = new Resonances::RBW("rhop",
 			Variable("rhop_amp_real", 1),
@@ -265,9 +271,15 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff ) {
 
 	bool fixAmps = false;
 
+    //auto var_func = [&rand_gen](std::string name, double start, double err) -> Variable {
+    //   return fixamps ?
+    //       Variable(name, start) : 
+    //       Variable(name, start + rand_gen(), err, 0, 0);
+    //};
+
 	ResonancePdf* rhom  = new Resonances::RBW("rhom", 
 			fixAmps ? Variable("rhom_amp_real", 0.714) : 
-			Variable("rhom_amp_real",  0.714, 0.001, 0, 0),
+			Variable("rhom_amp_real",  0.714 /* + rand_gen() */, 0.001, 0, 0),
 			fixAmps ? Variable("rhom_amp_imag", -0.025) :
 			Variable("rhom_amp_imag", -0.025, 0.1, 0, 0),
 			fixedRhoMass,
@@ -615,6 +627,7 @@ void runToyFit (std::string toyFileName) {
 
 	gettimeofday(&startTime, NULL);
 	startCPU = times(&startProc);
+    datapdf.setVerbosity(verbosity); // Maybe make optional? With a command line switch?
 	datapdf.fit(); 
 	stopCPU = times(&stopProc);
 	gettimeofday(&stopTime, NULL);
@@ -655,6 +668,7 @@ void runToyFit (std::string toyFileName) {
 int main (int argc, char** argv) {
 
     GooFit::Application app{"D2K3_toy", argc, argv};
+    app.add_option("-v,--verbose", verbosity, "Set the verbosity (to 0 for example", true);
 
     int fit_value;
     std::string name = "dalitz_mytoyMC_000.txt";
