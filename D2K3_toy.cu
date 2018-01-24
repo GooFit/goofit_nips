@@ -26,6 +26,7 @@
 #include <goofit/PDFs/GooPdf.h> 
 #include <goofit/FitManager.h> 
 #include <goofit/UnbinnedDataSet.h>
+#include <goofit/Application.h>
 
 using namespace std;
 using namespace GooFit;
@@ -649,6 +650,29 @@ void runToyFit (std::string toyFileName) {
 }
 
 int main (int argc, char** argv) {
+
+    GooFit::Application app{"D2K3_toy", argc, argv};
+
+    int fit_value;
+    std::string name = "dalitz_mytoyMC_000.txt";
+
+    auto fit = app.add_subcommand("fit");
+    fit->add_option("-i,--int", fit_value, "A number to load");
+    auto name_opt = fit->add_option("-n,--name,name", name, "The filename to load", true)
+        ->excludes("--int");
+
+    int value;
+    auto gen = app.add_subcommand("gen");
+    gen->add_option("value", value, "The number to generate")
+        ->required();
+    
+    app.require_subcommand(1);
+
+    GOOFIT_PARSE(app);
+
+    if(name_opt->count())
+        name = fmt::format("dalitz_mytoyMC_{0:3}.txt", fit_value);
+
 	gStyle->SetCanvasBorderMode(0);
 	gStyle->SetCanvasColor(10);
 	gStyle->SetFrameFillColor(10);
@@ -665,20 +689,11 @@ int main (int argc, char** argv) {
 	foodal = new TCanvas(); 
 	foodal->Size(10, 10);
 
-	cudaSetDevice(0);
-	if (argc ==2) runToyFit(argv[1]);
-	else{
-		int fitToRun = atoi(argv[1]);
-		int ifile = -1;
-		switch (fitToRun) {
-			case 0:
-				ifile = atoi(argv[2]);
-				sprintf(strbuffer, "dalitz_mytoyMC_%03d.txt", ifile);
-				runToyFit(strbuffer);  break;
-			case 1: runToyGeneration(atoi(argv[2]));  break; 
-			default: break; 
-		}
-	}
+
+    if(*fit)
+	    runToyFit(name);
+    if(*gen)
+	    runToyGeneration(value); 
 
 	// Print total minimization time
 	double myCPU = stopCPU - startCPU;
