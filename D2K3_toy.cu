@@ -37,8 +37,9 @@ clock_t startCPU, stopCPU;
 tms startProc, stopProc; 
 UnbinnedDataSet* data = 0; 
 
-Observable m12("m12",   0.0, 3.0);
-Observable m13("m13",   0.0, 3.0);
+Observable m12("m12",0.0,3.0);
+Observable m13("m13",0.0,3.0);
+
 EventNumber eventNumber("eventNumber");
 bool fitMasses = false; 
 Variable fixedRhoMass("rho_mass", 0.7758, 0.01, 0.7, 0.8);
