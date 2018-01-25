@@ -81,7 +81,7 @@ DalitzPlotPdf* signalDalitz;
 
 void makeToyDalitzData (GooPdf* overallSignal, const int iSeed = 0, string datadir = ".", const int nTotal = 1e5 ) ;
 
-DalitzPlotPdf* makeSignalPdf (GooPdf* eff = 0) ;
+DalitzPlotPdf* makeSignalPdf (GooPdf* eff = 0, bool fixAmps = false) ;
 
 fptype cpuGetM23 (fptype massPZ, fptype massPM) {
 	return (massSum.getValue() - massPZ - massPM); 
@@ -179,7 +179,7 @@ void runToyGeneration(int numFile = 0){
 	m13   = Observable("m13",   0.0, 3.0); 
 	m13.setNumBins(1500);
 	eventNumber = EventNumber("eventNumber", 0, INT_MAX);
-	signalDalitz = makeSignalPdf(); 
+	signalDalitz = makeSignalPdf(0,true); 
 	vector<PdfBase*> comps;
 	comps.clear(); 
 	comps.push_back(signalDalitz);
@@ -250,7 +250,7 @@ GooPdf* makeKzeroVeto () {
 	return kzero_veto;
 }
 
-DalitzPlotPdf* makeSignalPdf (GooPdf* eff) {
+DalitzPlotPdf* makeSignalPdf (GooPdf* eff,bool fixAmps) {
 	DecayInfo3 dtop0pp;
 	dtop0pp.motherMass  = MMass; 
 	dtop0pp.daug1Mass  = D1Mass;
@@ -277,7 +277,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff) {
 			PAIR_12);
 
 
-	bool fixAmps = false;
+	
 
     
 
