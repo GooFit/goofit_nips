@@ -10,11 +10,17 @@
 #include <TText.h>
 #include <TLine.h>
 #include <TMath.h>
+#include <TApplication.h>
+#include <TTree.h>
+
 // System stuff
 #include <fstream>
 #include <sys/time.h>
 #include <sys/times.h>
 #include <random>
+#include <CLI/Timer.hpp>
+#include <stdio.h>
+#include <iostream>
 
 // GooFit stuff
 #include <goofit/Variable.h>
@@ -459,6 +465,137 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff,bool fixAmps) {
 	return new DalitzPlotPdf("signalPDF", m12, m13, eventNumber, dtop0pp, effWithVeto);
 }
 
+double DalitzNorm(GooPdf* overallSignal,int N,double phi){
+
+
+		double max_pdf_value = phi*1.1;
+
+		random_device rd;
+		mt19937 mt(rd());
+		uniform_real_distribution<double> xyvalues(0.0,3.0);
+		uniform_real_distribution<double> rpdfValues(0.0,max_pdf_value);
+
+		std::vector<Observable> vars;
+		vars.push_back(m12);
+		vars.push_back(m13);
+		vars.push_back(eventNumber);
+
+		std::vector<fptype> rpdfValuesvec;
+
+    UnbinnedDataSet data(vars);
+		eventNumber = 0;
+
+		std::ofstream wt("data.txt");
+		std::ofstream wt2("data2.txt");
+
+		for(int i=0; i<N ; i++){
+
+			m12 = xyvalues(mt);
+			m13 = xyvalues(mt);
+
+
+				if(cpuDalitz(m12.getValue(), m13.getValue(), _mD0, piZeroMass, piPlusMass, piPlusMass)==1 ){
+        	data.addEvent();
+					eventNumber.setValue(eventNumber.getValue()+1);
+					//rpdfValuesvec.push_back(rpdfValues(mt));
+
+					wt << m12.getValue() << " " << m13.getValue() << std::endl;
+
+				}
+
+		}
+
+		wt.close();
+
+		overallSignal->setData(&data);
+		signalDalitz->setDataSize(data.getNumEvents());
+		std::vector<std::vector<double>> pdfValues = overallSignal->getCompProbsAtDataPoints();
+
+		int  hit = 0;
+		int	 miss = 0;
+
+		double buffer = 0;
+
+		 for(int k=0; k < pdfValues[0].size();k++){
+
+			 buffer += pdfValues[0][k];
+
+		 	if(rpdfValues(mt) < pdfValues[0][k]){
+		 		hit++;
+					data.loadEvent(k);
+					wt2 << m12.getValue() << " " << m13.getValue() << std::endl;
+
+		 	}else{
+		 		miss++;
+		 	}
+		 }
+
+
+		double H = (m12.getUpperLimit() - m12.getLowerLimit())*(m13.getUpperLimit() - m13.getLowerLimit()) ; //Area
+
+		hit = data.getNumEvents();
+
+		double integral = H*hit/N ;
+
+		return integral;
+
+}
+
+void runIntegration(int n = 100){
+
+	  //TApplication* rootapp = new TApplication("rootapp",&argc,argv);
+
+	signalDalitz = makeSignalPdf(0,true);
+
+	std::vector<PdfBase*> comps;
+	comps.clear();
+	comps.push_back(signalDalitz);
+
+	ProdPdf* overallSignal = new ProdPdf("overallSignal", comps);
+
+	int N = 1000000;
+
+	ofstream wt3("integral.txt");
+
+	double integral = 0;
+
+
+	std::cout << "start ! "<< std::endl;
+
+	for(int i=0;i<n;i++){
+
+		integral = DalitzNorm(overallSignal,N,1.8);
+
+		wt3 << integral << std::endl;
+
+	  std::cout << "integral " << i << " = " << integral << std::endl;
+
+	}
+
+	wt3.close();
+
+	std::cout << "end !\n\n" << std::endl;
+
+	TCanvas *c = new TCanvas("c","",800,800);
+
+	TH1F *hist= new TH1F();
+	TTree tree("integral.txt","x");
+	tree.ReadFile("integral.txt", "Integral");
+	hist->SetTitle("Integral");
+	hist->GetXaxis()->SetTitle("Values");
+	hist->GetYaxis()->SetTitle("Frequency");
+	tree.Draw("Integral>>hist");
+
+	//std::cout << "mean: " << hist->GetMean() << "\n";
+	//std::cout << "rms: " << hist->GetRMS() << "\n";
+
+	c->SaveAs("histogram.png");
+
+	//rootapp->Run();
+
+
+}
+
 void drawFitPlotsWithPulls(TH1* hd, TH1* ht, string plotdir){
 	const char* hname = hd->GetName();
 	char obsname[10];
@@ -545,8 +682,7 @@ void makeToyDalitzPdfPlots (GooPdf* overallSignal, string plotdir = "plots") {
 	}
 	overallSignal->setData(&currData);
 	signalDalitz->setDataSize(currData.getNumEvents());
-	std::vector<std::vector<double> > pdfValues;
-	pdfValues = overallSignal->getCompProbsAtDataPoints();
+	std::vector<std::vector<double> > pdfValues = overallSignal->getCompProbsAtDataPoints();
 	for (unsigned int j = 0; j < pdfValues[0].size(); ++j) {
 		double currm12 = currData.getValue(m12, j);
 		double currm13 = currData.getValue(m13, j);
@@ -609,12 +745,16 @@ void runToyFit (std::string toyFileName) {
 	ProdPdf* overallSignal = new ProdPdf("overallSignal", comps);
 	overallSignal->setData(data);
 	signalDalitz->setDataSize(data->getNumEvents());
+
+
+
+
 	FitManager datapdf(overallSignal);
 
 	gettimeofday(&startTime, NULL);
 	startCPU = times(&startProc);
     datapdf.setVerbosity(verbosity);
-		datapdf.setFCN();
+
 		 // Maybe make optional? With a command line switch?
 	datapdf.fit();
 	stopCPU = times(&stopProc);
@@ -666,6 +806,12 @@ int main (int argc, char** argv) {
     auto name_opt = fit->add_option("-n,--name,name", name, "The filename to load", true)
         ->excludes("--int");
 
+
+		int number;
+		auto run = app.add_subcommand("run");
+		run->add_option("N", number, "How many integrations do you want? N=100")
+		   ->required();
+
     int value;
     auto gen = app.add_subcommand("gen");
     gen->add_option("value", value, "The number to generate")
@@ -690,6 +836,7 @@ int main (int argc, char** argv) {
 	gStyle->SetLineWidth(1);
 	gStyle->SetLineColor(1);
 	gStyle->SetPalette(1, 0);
+	gStyle->SetOptStat("RM");
 	foo = new TCanvas();
 	foodal = new TCanvas();
 	foodal->Size(10, 10);
@@ -699,6 +846,10 @@ int main (int argc, char** argv) {
 	    runToyFit(name);
     if(*gen)
 	    runToyGeneration(value);
+		if(*run) {
+				CLI::AutoTimer timer("Integration");
+				runIntegration(number);
+		}
 
 	// Print total minimization time
 	double myCPU = stopCPU - startCPU;
