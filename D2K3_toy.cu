@@ -466,8 +466,6 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff,bool fixAmps) {
 }
 
 double DalitzNorm(GooPdf* overallSignal,int N,double phi){
-
-
 		double max_pdf_value = phi*1.1;
 
 		random_device rd;
@@ -485,8 +483,7 @@ double DalitzNorm(GooPdf* overallSignal,int N,double phi){
     UnbinnedDataSet data(vars);
 		eventNumber = 0;
 
-		std::ofstream wt("data.txt");
-		std::ofstream wt2("data2.txt");
+		std::ofstream wt2("toyData.txt");
 
 		for(int i=0; i<N ; i++){
 
@@ -497,15 +494,10 @@ double DalitzNorm(GooPdf* overallSignal,int N,double phi){
 				if(cpuDalitz(m12.getValue(), m13.getValue(), _mD0, piZeroMass, piPlusMass, piPlusMass)==1 ){
         	data.addEvent();
 					eventNumber.setValue(eventNumber.getValue()+1);
-					//rpdfValuesvec.push_back(rpdfValues(mt));
-
-					wt << m12.getValue() << " " << m13.getValue() << std::endl;
-
-				}
+					}
 
 		}
 
-		wt.close();
 
 		overallSignal->setData(&data);
 		signalDalitz->setDataSize(data.getNumEvents());
@@ -530,6 +522,8 @@ double DalitzNorm(GooPdf* overallSignal,int N,double phi){
 		 	}
 		 }
 
+		 wt2.close();
+
 
 		double H = (m12.getUpperLimit() - m12.getLowerLimit())*(m13.getUpperLimit() - m13.getLowerLimit()) ; //Area
 
@@ -553,7 +547,7 @@ void runIntegration(int n = 100){
 
 	ProdPdf* overallSignal = new ProdPdf("overallSignal", comps);
 
-	int N = 1000000;
+	int N = 100000;
 
 	ofstream wt3("integral.txt");
 
@@ -577,7 +571,6 @@ void runIntegration(int n = 100){
 	std::cout << "end !\n\n" << std::endl;
 
 	TCanvas *c = new TCanvas("c","",800,800);
-
 	TH1F *hist= new TH1F();
 	TTree tree("integral.txt","x");
 	tree.ReadFile("integral.txt", "Integral");
@@ -585,11 +578,20 @@ void runIntegration(int n = 100){
 	hist->GetXaxis()->SetTitle("Values");
 	hist->GetYaxis()->SetTitle("Frequency");
 	tree.Draw("Integral>>hist");
+	c->SaveAs("histogram.png");
+
+	TCanvas *d = new TCanvas("d","",800,800);
+	TH1F *hist2= new TH1F();
+	TTree tree2("toyData.txt","m12:m13");
+	tree2.ReadFile("toyData.txt", "m12:m13");
+	tree2.Draw("m12:m13>>hist2","","colz");
+	d->SaveAs("toyDalitz.png");
+
 
 	//std::cout << "mean: " << hist->GetMean() << "\n";
 	//std::cout << "rms: " << hist->GetRMS() << "\n";
 
-	c->SaveAs("histogram.png");
+
 
 	//rootapp->Run();
 
