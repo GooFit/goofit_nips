@@ -414,7 +414,7 @@ vector<fptype> HH_bin_limits;
 vector<Variable> pwa_coefs_amp;
 vector<Variable> pwa_coefs_phs;
 
-ResonancePdf* loadPWAResonance(const string fname = pwa_file, bool fixAmp = false){
+ResonancePdf* loadPWAResonance(const string fname = pwa_file, bool fixAmp = false,unsigned int cyc=PAIR_12){
   std::ifstream reader;
   reader.open(fname.c_str());
   assert(reader.good());
@@ -450,7 +450,7 @@ ResonancePdf* loadPWAResonance(const string fname = pwa_file, bool fixAmp = fals
   if (fixAmp) { swave_amp_real.setValue(1.); swave_amp_imag.setValue(0.); swave_amp_real.setFixed(true); swave_amp_imag.setFixed(true); }
   cout<<"Numbers loaded: "<<HH_bin_limits.size()<<" / "<<i<<endl;
 
-  ResonancePdf* swave = new Resonances::Spline("swave", swave_amp_real,swave_amp_imag, HH_bin_limits, pwa_coefs_amp, pwa_coefs_phs,PAIR_12);
+  ResonancePdf* swave = new Resonances::Spline("swave", swave_amp_real,swave_amp_imag, HH_bin_limits, pwa_coefs_amp, pwa_coefs_phs,cyc);
   return swave;
 }
 
@@ -528,10 +528,13 @@ ResonancePdf* phi13  = new Resonances::RBW("phi13",phi_amp_real,phi_amp_imag,fix
   ResonancePdf* nonr  = new Resonances::NonRes("nonr",nonr_amp_real,nonr_amp_imag);
 
   //bool fixAmps = false;
-  ResonancePdf* swave = loadPWAResonance(pwa_file, fixAmps);
+  ResonancePdf* swave = loadPWAResonance(pwa_file, fixAmps,PAIR_12);
+ResonancePdf* swave13 = loadPWAResonance(pwa_file, fixAmps,PAIR_13);
 
   dtop0pp.resonances.push_back(phi);
   dtop0pp.resonances.push_back(swave);
+dtop0pp.resonances.push_back(swave13);
+
 	//dtop0pp.resonances.push_back(f0X);
 	//dtop0pp.resonances.push_back(f0);
 	dtop0pp.resonances.push_back(nonr);
