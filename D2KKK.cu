@@ -43,16 +43,16 @@ using namespace GooFit;
 
 const int PI = 3.14159265358979323846;
 
-TCanvas* foo; 
-TCanvas* foodal; 
+TCanvas* foo;
+TCanvas* foodal;
 timeval startTime, stopTime, totalTime;
-clock_t startCPU, stopCPU; 
-tms startProc, stopProc; 
+clock_t startCPU, stopCPU;
+tms startProc, stopProc;
 UnbinnedDataSet* data = 0;
 const unsigned int nbins = 1000;
-TH2F* weightHistogram = 0; 
-TH2F* bkgHistogram    = 0; 
-TH2F* underlyingBins  = 0; 
+TH2F* weightHistogram = 0;
+TH2F* bkgHistogram    = 0;
+TH2F* underlyingBins  = 0;
 
 // How many events will be generated for Eff Bkg?
 const int NevG = 1e7;
@@ -69,7 +69,7 @@ Observable m13("m13", 0.9, 2.0);
 EventNumber eventNumber("eventNumber");
 bool fitMasses = false;
 Variable fixedPhiMass("phi_mass", 1.019461, 0.01, 0.7, 1.8);
-Variable fixedPhiWidth("phi_width", 0.004266, 0.001, 1e-5, 1e-1); 
+Variable fixedPhiWidth("phi_width", 0.004266, 0.001, 1e-5, 1e-1);
 
 const fptype _mDp = 1.86962;
 const fptype KPlusMass = 0.493677;
@@ -200,21 +200,21 @@ void makeToyDalitzData (GooPdf* overallSignal, const int iSeed, string datadir, 
 	foodal->SetLogz(false);
 	dalitzpp0_dat_hist.Rebin2D(10,10);
 	dalitzpp0_dat_hist.Draw("colz");
-	foodal->SaveAs("dalitzpp_dat_temp.png");
+	foodal->SaveAs("Dalitz_D2KKK_temp.png");
 }
 
 void runToyGeneration(int numFile = 0){
 	m12   = Observable("m12",   0.9, 2.0);
 	m12.setNumBins(1500);
-	
+
 	m13   = Observable("m13",   0.9, 2.0);
 	m13.setNumBins(1500);
 	eventNumber = EventNumber("eventNumber", 0, INT_MAX);
-	signalDalitz = makeSignalPdf(0,true);
+	signalDalitz = makeSignalPdf(0,false);
 	vector<PdfBase*> comps;
 	comps.clear();
 	comps.push_back(signalDalitz);
-	
+
 	std::cout << "Creating overall PDF\n";
 	ProdPdf* overallSignal = new ProdPdf("overallSignal", comps);
 	gettimeofday(&startTime, NULL);
@@ -226,12 +226,12 @@ void runToyGeneration(int numFile = 0){
 }
 
 void getToyData (std::string toyFileName) {
-	 TH2F dalitzplot("dalitzplot", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit(), m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit()); 
+	 TH2F dalitzplot("dalitzplot", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit(), m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
   std::vector<Observable> vars;
   vars.push_back(m12);
   vars.push_back(m13);
-  vars.push_back(eventNumber); 
-  data = new UnbinnedDataSet(vars); 
+  vars.push_back(eventNumber);
+  data = new UnbinnedDataSet(vars);
 //  const int MAXEVT = 1e4;
 
   const string suffix = ".root";
@@ -252,33 +252,33 @@ void getToyData (std::string toyFileName) {
           t->GetEntry(i);
           m12.setValue(m2_12);
           m13.setValue(m2_13);
-          eventNumber.setValue(data->getNumEvents()); 
-          data->addEvent(); 
-          dalitzplot.Fill(m12.getValue(), m13.getValue()); 
+          eventNumber.setValue(data->getNumEvents());
+          data->addEvent();
+          dalitzplot.Fill(m12.getValue(), m13.getValue());
       }
       f->Close();
   }
   else{
   std::ifstream reader;
-  reader.open(toyFileName.c_str()); 
+  reader.open(toyFileName.c_str());
   std::string buffer;
   while (!reader.eof()) {
     reader >> buffer;
-    if (buffer == "====") break; 
-    //std::cout << buffer; 
+    if (buffer == "====") break;
+    //std::cout << buffer;
   }
 
-  double dummy = 0; 
+  double dummy = 0;
   while (!reader.eof()) {
     reader >> dummy;
-    reader >> dummy;      // m23, m(pi+ pi-), called m12 in processToyRoot convention. 
+    reader >> dummy;      // m23, m(pi+ pi-), called m12 in processToyRoot convention.
     reader >> m12; // Already swapped according to D* charge. m12 = m(pi+pi0)
     reader >> m13;
 
     // Errors on Dalitz variables
-    reader >> dummy; 
-    reader >> dummy; 
-    reader >> dummy; 
+    reader >> dummy;
+    reader >> dummy;
+    reader >> dummy;
 
     reader >> dummy; // Decay time
     reader >> dummy; // sigma_t
@@ -289,21 +289,21 @@ void getToyData (std::string toyFileName) {
     reader >> dummy; // Dst charge
     reader >> dummy; // Run
     reader >> dummy; // Event
-    reader >> dummy; // Signal and four bkg fractions. 
-    reader >> dummy; 
-    reader >> dummy; 
-    reader >> dummy; 
-    reader >> dummy; 
+    reader >> dummy; // Signal and four bkg fractions.
+    reader >> dummy;
+    reader >> dummy;
+    reader >> dummy;
+    reader >> dummy;
 
-    eventNumber.setValue(data->getNumEvents()); 
-    data->addEvent(); 
+    eventNumber.setValue(data->getNumEvents());
+    data->addEvent();
 
-    dalitzplot.Fill(m12.getValue(), m13.getValue()); 
+    dalitzplot.Fill(m12.getValue(), m13.getValue());
   }}
 
-  dalitzplot.SetStats(false); 
+  dalitzplot.SetStats(false);
   dalitzplot.Draw("colz");
-  foodal->SaveAs("dalitzplot.png"); }
+  foodal->SaveAs("dalitzplot_D2KKK.png"); }
 
 /*GooPdf* makeKzeroVeto () {
 	if (kzero_veto) return kzero_veto;
@@ -324,23 +324,23 @@ void createWeightHistogram () {
 
   TFile*f = TFile::Open("Fit_Input/effspline300.root");
   weightHistogram = (TH2F*)f->Get("eff_spline");
-  weightHistogram->SetStats(false); 
+  weightHistogram->SetStats(false);
 }
 
 void createBackgroundHistogram () {
   TFile*f = TFile::Open("Fit_Input/bkg_histo_300bins.root");
   bkgHistogram = (TH2F*)f->Get("bkgHist_acc");
-  bkgHistogram->SetStats(false); 
+  bkgHistogram->SetStats(false);
 }
 
 GooPdf* makeEfficiencyPdf () {
   vector<Observable> lvars;
-  lvars.push_back(m12); 
-  lvars.push_back(m13);  
-  BinnedDataSet* binEffData = new BinnedDataSet(lvars); 
+  lvars.push_back(m12);
+  lvars.push_back(m13);
+  BinnedDataSet* binEffData = new BinnedDataSet(lvars);
   //createWeightHistogram();
-  // Now testing your efficiency data by uniformly generating m12,m13 values 
-  TRandom3 donram(0); 
+  // Now testing your efficiency data by uniformly generating m12,m13 values
+  TRandom3 donram(0);
   for (int i = 0; i < NevG; i++){
     do{
     m12.setValue(donram.Uniform(m12.getLowerLimit(), m12.getUpperLimit()));
@@ -356,31 +356,31 @@ GooPdf* makeEfficiencyPdf () {
       weight = weightHistogram->GetBinContent(weightHistogram->FindBin(m12.getValue(), m13.getValue()));
       binEffData->addWeightedEvent(weight);
       //if (underlyingBins) underlyingBins->Fill(m12->value, m13->value, weight);
-      //swapmass = m12->value; m12->value = m13->value; m13->value = swapmass;   
+      //swapmass = m12->value; m12->value = m13->value; m13->value = swapmass;
       }
   }
   if (saveEffPlot) {
     foodal->cd();
-    weightHistogram->Draw("colz"); 
+    weightHistogram->Draw("colz");
     foodal->SaveAs("plots/efficiency_bins.png");
     foodal->SetLogz(true);
     foodal->SaveAs("plots/efficiency_bins_log.png");
-    foo->cd(); 
+    foo->cd();
   }
  // Smooth
-  Variable effSmoothing("effSmoothing", 0);   
-  SmoothHistogramPdf* ret = new SmoothHistogramPdf("efficiency", binEffData, effSmoothing); 
-  return ret; 
+  Variable effSmoothing("effSmoothing", 0);
+  SmoothHistogramPdf* ret = new SmoothHistogramPdf("efficiency", binEffData, effSmoothing);
+  return ret;
 }
 
 GooPdf* makeBackgroundPdf () {
   vector<Observable> lvars;
-  lvars.push_back(m12); 
-  lvars.push_back(m13);  
-  BinnedDataSet* binBkgData = new BinnedDataSet(lvars); 
+  lvars.push_back(m12);
+  lvars.push_back(m13);
+  BinnedDataSet* binBkgData = new BinnedDataSet(lvars);
   createBackgroundHistogram();
-  // Now testing your efficiency data by uniformly generating m12,m13 values 
-  TRandom3 donram(0); 
+  // Now testing your efficiency data by uniformly generating m12,m13 values
+  TRandom3 donram(0);
   for (int i = 0; i < NevG; i++){
     do{
     m12.setValue(donram.Uniform(m12.getLowerLimit(), m12.getUpperLimit()));
@@ -398,16 +398,16 @@ GooPdf* makeBackgroundPdf () {
   }
   if (saveBkgPlot) {
     foodal->cd();
-    bkgHistogram->Draw("colz"); 
+    bkgHistogram->Draw("colz");
     foodal->SetLogz(false);
     foodal->SaveAs("plots/background_bins.png");
     foodal->SetLogz(true);
     foodal->SaveAs("plots/background_bins_log.png");
-    foo->cd(); 
+    foo->cd();
   }
-  Variable* effSmoothing = new Variable("effSmoothing",0);   
-  SmoothHistogramPdf* ret = new SmoothHistogramPdf("efficiency", binBkgData, *effSmoothing); 
-  return ret; 
+  Variable* effSmoothing = new Variable("effSmoothing",0);
+  SmoothHistogramPdf* ret = new SmoothHistogramPdf("efficiency", binBkgData, *effSmoothing);
+  return ret;
 }
 
 vector<fptype> HH_bin_limits;
@@ -416,7 +416,7 @@ vector<Variable> pwa_coefs_phs;
 
 ResonancePdf* loadPWAResonance(const string fname = pwa_file, bool fixAmp = false){
   std::ifstream reader;
-  reader.open(fname.c_str()); 
+  reader.open(fname.c_str());
   assert(reader.good());
   HH_bin_limits.clear();
   pwa_coefs_amp.clear();
@@ -426,8 +426,8 @@ ResonancePdf* loadPWAResonance(const string fname = pwa_file, bool fixAmp = fals
   int i = 0;
   while (reader >> e1 >> e2 >> e3 >> e4) {
       HH_bin_limits.push_back(e1*e1);
-      
-      emag = sqrt(e2*e2+e3*e3); 
+
+      emag = sqrt(e2*e2+e3*e3);
       //emag = e2;
       ephs = TMath::ATan2(e3,e2);
       //ephs = e3;
@@ -444,7 +444,7 @@ ResonancePdf* loadPWAResonance(const string fname = pwa_file, bool fixAmp = fals
   //const fptype scale = 1;
   Variable swave_amp_real("swave_amp_real", 3.0,   0.001, 0, 0);
   Variable swave_amp_imag("swave_amp_imag", 0.0,   0.001, 0, 0);
-  swave_amp_real.setFixed(true); 
+  swave_amp_real.setFixed(true);
   swave_amp_imag.setFixed(true);
 
   if (fixAmp) { swave_amp_real.setValue(1.); swave_amp_imag.setValue(0.); swave_amp_real.setFixed(true); swave_amp_imag.setFixed(true); }
@@ -498,9 +498,11 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff,bool fixAmps) {
   Variable phi_amp_imag("phi_amp_imag", 0);
   fixedPhiMass.setFixed(true);
   fixedPhiWidth.setFixed(true);
-  
+
 ResonancePdf* phi  = new Resonances::RBW("phi",phi_amp_real,phi_amp_imag,fixedPhiMass,fixedPhiWidth,1,PAIR_12,true);
-  
+
+ResonancePdf* phi13  = new Resonances::RBW("phi13",phi_amp_real,phi_amp_imag,fixedPhiMass,fixedPhiWidth,1,PAIR_13,true);
+
 
   // f0(980)
   Variable f0_amp_real("f0_amp_real",    12.341*cos(-62.852*(PI/180)),   0.0001, -100, 100);
@@ -512,7 +514,7 @@ ResonancePdf* phi  = new Resonances::RBW("phi",phi_amp_real,phi_amp_imag,fixedPh
   ResonancePdf* f0  = new Resonances::FLATTE("f0",f0_amp_real,f0_amp_imag,f0Mass,f0g1,rg1og2,PAIR_12, true); //Required to be symmetric
 
   // f0(X)
- 
+
   Variable f0X_amp_real("f0X_amp_real",  11.918*cos(20.248*(PI/180)),   0.0001, -100, 100);
   Variable f0X_amp_imag("f0X_amp_imag",  11.918*sin(20.248*(PI/180)),   0.0001, -100, 100);
   Variable f0XMass("f0XMass",    1.41478);//,   0.00001,    1.00, 3.00);
@@ -530,19 +532,25 @@ ResonancePdf* phi  = new Resonances::RBW("phi",phi_amp_real,phi_amp_imag,fixedPh
 
   dtop0pp.resonances.push_back(phi);
   dtop0pp.resonances.push_back(swave);
-  
+	//dtop0pp.resonances.push_back(f0X);
+	//dtop0pp.resonances.push_back(f0);
+	dtop0pp.resonances.push_back(nonr);
+	dtop0pp.resonances.push_back(phi13);
+
+
+
 
   if (!eff) {
-    // By default create a constant efficiency. 
+    // By default create a constant efficiency.
     vector<Variable> offsets;
     vector<Observable> observables;
-    vector<Variable> coefficients; 
+    vector<Variable> coefficients;
 
     observables.push_back(m12);
     observables.push_back(m13);
     offsets.push_back(constantZero);
     offsets.push_back(constantZero);
-    coefficients.push_back(constantOne); 
+    coefficients.push_back(constantOne);
     eff = new PolynomialPdf("constantEff", observables, coefficients, offsets, 0);
   }
   comps.clear();
@@ -555,7 +563,7 @@ double DalitzNorm(GooPdf* overallSignal,int N,double phi){
 
 		random_device rd;
 		mt19937 mt(rd());
-		uniform_real_distribution<double> xyvalues(0.0,3.0);
+		uniform_real_distribution<double> xyvalues(0.9,2.0);
 		uniform_real_distribution<double> rpdfValues(0.0,max_pdf_value);
 
 		std::vector<Observable> vars;
@@ -624,7 +632,7 @@ void runIntegration(int n = 100){
 
 	  //TApplication* rootapp = new TApplication("rootapp",&argc,argv);
 
-	signalDalitz = makeSignalPdf(0,true);
+	signalDalitz = makeSignalPdf(0,false);
 
 	std::vector<PdfBase*> comps;
 	comps.clear();
@@ -817,20 +825,20 @@ void runToyFit (std::string toyFileName) {
 	eventNumber = EventNumber("eventNumber", 0, INT_MAX);
 	getToyData(toyFileName);
 
-	
+
 	signalDalitz = makeSignalPdf();
 	comps.clear();
 	comps.push_back(signalDalitz);
 	ProdPdf* overallSignal = new ProdPdf("overallSignal", comps);
 	overallSignal->setData(data);
 	signalDalitz->setDataSize(data->getNumEvents());
-	
+
 	FitManager datapdf(overallSignal);
 
 	for(int i=0;i<HH_bin_limits.size();i++){
-      pwa_coefs_amp[i].setFixed(false);  
+      pwa_coefs_amp[i].setFixed(false);
       pwa_coefs_phs[i].setFixed(false);
-      //pwa_coefs_amp[i]->error = pwa_coefs_phs[i]->error = 1.0; 
+      //pwa_coefs_amp[i]->error = pwa_coefs_phs[i]->error = 1.0;
   }
 
 	gettimeofday(&startTime, NULL);
