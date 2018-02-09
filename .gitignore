@@ -5,6 +5,6 @@
 *.cubin
 *.fatbin
 */build*
-*/Fit_Input
+*/Fit_Input*
 notes.txt
 teste.cu
