@@ -5,6 +5,9 @@
 *.cubin
 *.fatbin
 */build*
-*/Fit_Input*
 notes.txt
-teste.cu
+./D2KKK_Plots
+D2KKK_test.cu
+D2KKK.cu
+D2K3_toy.cu
+.gitignore
