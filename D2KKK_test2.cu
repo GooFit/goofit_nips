@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <math.h>
+#include <tuple>
 
 // GooFit stuff
 #include <goofit/Variable.h>
@@ -573,7 +574,7 @@ ResonancePdf* phi13  = new Resonances::RBW("phi13",phi_amp_real,phi_amp_imag,fix
   return new DalitzPlotPdf("signalPDF", m12, m13, eventNumber, dtop0pp, eff);
 }
 
-void DalitzNorm(GooPdf* overallSignal,int N){
+std::tuple<double,double> DalitzNorm(GooPdf* overallSignal,int N){
 
 
 		random_device rd;
@@ -645,7 +646,7 @@ void DalitzNorm(GooPdf* overallSignal,int N){
 
 		double integral = V*mean;
 
-		std::cout << "Integral: "<< integral << "\t Error: " << RMS << "\n"; ;
+		return std::make_tuple(integral,RMS);
 
 }
 
@@ -664,9 +665,9 @@ void runIntegration(int N = 10000){
 
 
 
-	DalitzNorm(overallSignal,N);
+	auto integral = DalitzNorm(overallSignal,N);
 
-	std::cout  << '\n';
+	std::cout  << "Integral: " << std::get<0>(integral) <<  "\t" << "RMS: " << std::get<1>(integral) << "\n\n";
 
 
 }
