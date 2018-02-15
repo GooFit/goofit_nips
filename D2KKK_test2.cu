@@ -69,7 +69,7 @@ Observable m13("m13", 0.9, 2.0);
 EventNumber eventNumber("eventNumber");
 bool fitMasses = false;
 Variable fixedPhiMass("phi_mass", 1.019461, 0.01, 0.7, 1.8);
-Variable fixedPhiWidth("phi_width", 5*0.004266, 0.001, 1e-5, 1e-1);
+Variable fixedPhiWidth("phi_width", 0.004266, 0.001, 1e-5, 1e-1);
 
 const fptype _mDp = 1.86962;
 const fptype KPlusMass = 0.493677;
