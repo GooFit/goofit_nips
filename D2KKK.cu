@@ -555,78 +555,77 @@ ResonancePdf* phi  = new Resonances::RBW("phi",phi_amp_real,phi_amp_imag,fixedPh
 std::tuple<double,double> DalitzNorm(GooPdf* overallSignal,int N){
 
 
-		random_device rd;
-		mt19937 mt(rd());
-		uniform_real_distribution<double> xyvalues(0.9,2.0);
 
-		std::vector<Observable> vars;
-		vars.push_back(m12);
-		vars.push_back(m13);
-		vars.push_back(eventNumber);
+	random_device rd;
+	mt19937 mt(rd());
+	uniform_real_distribution<double> xyvalues(0.9,2.0);
 
-		std::vector<fptype> rpdfValuesvec;
+	std::vector<Observable> vars;
+	vars.push_back(m12);
+	vars.push_back(m13);
+	vars.push_back(eventNumber);
 
-    UnbinnedDataSet data(vars);
-		eventNumber = 0;
+	std::vector<fptype> rpdfValuesvec;
 
-
-		for(int i=0; i<N ; i++){
-
-			m12 = xyvalues(mt);
-			m13 = xyvalues(mt);
+	UnbinnedDataSet data(vars);
+	eventNumber = 0;
 
 
+	for(int i=0; i<N ; i++){
 
-				if(cpuDalitz(m12.getValue(), m13.getValue())==1 ){
-
-					eventNumber.setValue(eventNumber.getValue()+1);
-					data.addEvent();
-
-				}
-
-		}
+		m12 = xyvalues(mt);
+		m13 = xyvalues(mt);
 
 
 
-		overallSignal->setData(&data);
-		signalDalitz->setDataSize(data.getNumEvents());
-		std::vector<std::vector<double>> pdfValues = overallSignal->getCompProbsAtDataPoints();
+			if(cpuDalitz(m12.getValue(), m13.getValue())==1 ){
+
+				eventNumber.setValue(eventNumber.getValue()+1);
+				data.addEvent();
+
+			}
+
+	}
 
 
-		double buffer = 0;
 
-		cout<< "Sample Size = " << pdfValues[0].size() << endl;
+	overallSignal->setData(&data);
+	signalDalitz->setDataSize(data.getNumEvents());
+	std::vector<std::vector<double>> pdfValues = overallSignal->getCompProbsAtDataPoints();
 
-		 for(int k=0; k < pdfValues[0].size();k++){
 
-			 buffer += pdfValues[0][k];
+	double buffer = 0;
 
-		}
+	//cout<< "Sample Size = " << pdfValues[0].size() << endl;
 
-		double  mean = buffer/N;
-		double diff = 0;
+	 for(int k=0; k < pdfValues[0].size();k++){
 
-		for(int l=0;l<pdfValues[0].size();l++){
+		 buffer += pdfValues[0][k];
 
-			diff += (pdfValues[0][l] - mean)*(pdfValues[0][l] - mean);
+	}
 
-		}
+	double  mean = buffer/N;
+	double diff = 0;
 
-		double variance = diff/(N-1);
-		double sigma = sqrt(variance);
-		double RMS = sigma*V/sqrt(N);
+	for(int l=0;l<pdfValues[0].size();l++){
 
-		double integral = V*mean;
+		diff += (pdfValues[0][l] - mean)*(pdfValues[0][l] - mean);
 
-		return std::make_tuple(integral,RMS);
+	}
+
+	double variance_f = diff/(N-1);
+	double variance = V*V*variance_f/N;
+	double sigma = sqrt(variance);
+	//double RMS = sigma*V/sqrt(N);
+
+	double integral = V*mean;
+
+return std::make_tuple(integral,sigma);
 
 }
 
 
 void runIntegration(int N = 10000){
-
-	  //TApplication* rootapp = new TApplication("rootapp",&argc,argv);
-
 
 	signalDalitz = makeSignalPdf(0,false);
 
@@ -636,9 +635,25 @@ void runIntegration(int N = 10000){
 
 	ProdPdf* overallSignal = new ProdPdf("overallSignal", comps);
 
-	auto integral = DalitzNorm(overallSignal,N);
+	double buffer = 0;
+	double buffer_2 = 0;
+	double buffer_error = 0;
 
-	std::cout  << "Integral: " << std::get<0>(integral) <<  '\t' << "RMS: " << std::get<1>(integral) << "\n\n";
+	for(int i = 0; i < 100 ; i++){
+
+			auto integral2 = DalitzNorm(overallSignal,N);
+			buffer+=std::get<0>(integral2);
+			buffer_2+=buffer*buffer;
+			buffer_error +=std::get<1>(integral2);
+	}
+
+	std::cout <<  '\n';
+
+	std::cout  << "Mean_Integral: " << buffer/100 <<'\t'<< "Error: "<<buffer_error/100<< "\n\n";
+
+	auto integral = DalitzNorm(overallSignal,N);
+	std::cout  << "Integral: " << std::get<0>(integral) <<  '\t' << "Error: " << std::get<1>(integral) << "\n\n";
+
 
 
 }
