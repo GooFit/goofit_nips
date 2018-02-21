@@ -23,6 +23,7 @@
 #include <iostream>
 #include <math.h>
 #include <tuple>
+#include <algorithm>
 
 // GooFit stuff
 #include <goofit/Variable.h>
@@ -616,8 +617,6 @@ std::tuple<double,double> DalitzNorm(GooPdf* overallSignal,int N){
 	double variance_f = diff/(N-1);
 	double variance = V*V*variance_f/N;
 	double sigma = sqrt(variance);
-	//double RMS = sigma*V/sqrt(N);
-
 	double integral = V*mean;
 
 return std::make_tuple(integral,sigma);
@@ -636,23 +635,40 @@ void runIntegration(int N = 10000){
 	ProdPdf* overallSignal = new ProdPdf("overallSignal", comps);
 
 	double buffer = 0;
-	double buffer_2 = 0;
 	double buffer_error = 0;
+
+	double arr[100];
+	std::fill(arr,arr+100, 0);
+
 
 	for(int i = 0; i < 100 ; i++){
 
 			auto integral2 = DalitzNorm(overallSignal,N);
+			arr[i] = std::get<0>(integral2);
 			buffer+=std::get<0>(integral2);
-			buffer_2+=buffer*buffer;
 			buffer_error +=std::get<1>(integral2);
 	}
 
+	double diff = 0;
+
+	for(int l=0;l<100;l++){
+
+		diff += (arr[l] - buffer/100)*(arr[l] - buffer/100);
+
+	}
+
+	double variance = diff/(100-1);
+	double sigma = sqrt(variance);
+
 	std::cout <<  '\n';
+	std::cout  << "<E>_{N_Integrations=100}: " << buffer/100 <<'\t'<< "stdError: "<< sigma/sqrt(100) <<"\t\t"  << "stdDev: "<< sigma << "\n\n";
 
-	std::cout  << "Mean_Integral: " << buffer/100 <<'\t'<< "Error: "<<buffer_error/100<< "\n\n";
+  double integral, sigma2;
+	std::tie(integral,sigma2) = DalitzNorm(overallSignal,N);
 
-	auto integral = DalitzNorm(overallSignal,N);
-	std::cout  << "Integral: " << std::get<0>(integral) <<  '\t' << "Error: " << std::get<1>(integral) << "\n\n";
+	std::cout  << "<E>_{N_Integrations=1}: " << integral << '\t' << "<delta_E>: " << sigma2<< "\n\n";
+
+	std::cout << "|stdDev - <delta_E>|= " <<abs(sigma - sigma2) << '\n\n';
 
 
 
@@ -880,6 +896,7 @@ int main (int argc, char** argv) {
 		if(*run) {
 				CLI::AutoTimer timer("Integration");
 				runIntegration(N);
+				std::cout<< "\n\n";
 		}
 
 	// Print total minimization time
