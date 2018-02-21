@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <math.h>
+#include <tuple>
 
 // GooFit stuff
 #include <goofit/Variable.h>
@@ -58,7 +59,7 @@ TH2F* underlyingBins  = 0;
 const int NevG = 1e7;
 
 // PWA INPUT FILE NAME
-const string  pwa_file = "PWA_COEFFS_50.txt";
+const string  pwa_file = "files/PWA_COEFFS_50.txt";
 
 
 // FIT OR JUST PLOT?
@@ -73,6 +74,7 @@ Variable fixedPhiWidth("phi_width", 0.004266, 0.001, 1e-5, 1e-1);
 
 const fptype _mDp = 1.86962;
 const fptype KPlusMass = 0.493677;
+double V = (m12.getUpperLimit() - m12.getLowerLimit())*(m13.getUpperLimit() - m13.getLowerLimit()); //Volume
 
 
 const fptype D1Mass = KPlusMass;//
@@ -109,7 +111,7 @@ bool doEffSwap = true;
 bool saveEffPlot = true;
 bool saveBkgPlot = true;
 
-void makeToyDalitzData (GooPdf* overallSignal, const int iSeed = 0, string datadir = ".", const int nTotal = 1e5 ) ;
+void makeToyDalitzData (GooPdf* overallSignal, const int iSeed = 0, string datadir = ".", const int nTotal = 1.e6 ) ;
 
 DalitzPlotPdf* makeSignalPdf (GooPdf* eff = 0, bool fixAmps = false) ;
 
@@ -200,7 +202,10 @@ void makeToyDalitzData (GooPdf* overallSignal, const int iSeed, string datadir, 
 	foodal->SetLogz(false);
 	dalitzpp0_dat_hist.Rebin2D(10,10);
 	dalitzpp0_dat_hist.Draw("colz");
-	foodal->SaveAs("Dalitz_D2KKK_temp.png");
+	dalitzpp0_dat_hist.SetStats(0);
+	//foodal->SaveAs("Dalitz_D2KKK_temp.root");
+	foodal->SaveAs("D2KKK_Plots/Dalitz_D2KKK_temp.png");
+
 }
 
 void runToyGeneration(int numFile = 0){
@@ -301,9 +306,10 @@ void getToyData (std::string toyFileName) {
     dalitzplot.Fill(m12.getValue(), m13.getValue());
   }}
 
-  dalitzplot.SetStats(false);
+
+  dalitzplot.SetStats(0);
   dalitzplot.Draw("colz");
-  foodal->SaveAs("dalitzplot_D2KKK.png"); }
+  foodal->SaveAs("dalitzplot_D2KKK_gen.png"); }
 
 /*GooPdf* makeKzeroVeto () {
 	if (kzero_veto) return kzero_veto;
@@ -414,7 +420,7 @@ vector<fptype> HH_bin_limits;
 vector<Variable> pwa_coefs_amp;
 vector<Variable> pwa_coefs_phs;
 
-ResonancePdf* loadPWAResonance(const string fname = pwa_file, bool fixAmp = false,unsigned int cyc=PAIR_12){
+std::tuple<ResonancePdf*,ResonancePdf*> loadPWAResonance(const string fname = pwa_file, bool fixAmp = false){
   std::ifstream reader;
   reader.open(fname.c_str());
   assert(reader.good());
@@ -447,12 +453,19 @@ ResonancePdf* loadPWAResonance(const string fname = pwa_file, bool fixAmp = fals
   swave_amp_real.setFixed(true);
   swave_amp_imag.setFixed(true);
 
-  if (fixAmp) { swave_amp_real.setValue(1.); swave_amp_imag.setValue(0.); swave_amp_real.setFixed(true); swave_amp_imag.setFixed(true); }
+
+
+  if (fixAmp) { swave_amp_real.setValue(1.); swave_amp_imag.setValue(0.); swave_amp_real.setFixed(true); swave_amp_imag.setFixed(true);
+
+	 }
   cout<<"Numbers loaded: "<<HH_bin_limits.size()<<" / "<<i<<endl;
 
-  ResonancePdf* swave = new Resonances::Spline("swave", swave_amp_real,swave_amp_imag, HH_bin_limits, pwa_coefs_amp, pwa_coefs_phs,cyc);
-  return swave;
+  ResonancePdf* swave_12 = new Resonances::Spline("swave_12", swave_amp_real,swave_amp_imag, HH_bin_limits, pwa_coefs_amp, pwa_coefs_phs,PAIR_12);
+	ResonancePdf* swave_13 = new Resonances::Spline("swave_13", swave_amp_real,swave_amp_imag, HH_bin_limits, pwa_coefs_amp, pwa_coefs_phs,PAIR_13);
+
+	return std::make_tuple(swave_12,swave_13);
 }
+
 
 DalitzPlotPdf* makeSignalPdf (GooPdf* eff,bool fixAmps) {
 	DecayInfo3 dtop0pp;
@@ -463,35 +476,6 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff,bool fixAmps) {
 	dtop0pp.meson_radius  = 1.5;
 
 
-  /*  // Make a random number generater heres
-
-		random_device rd;
-
-		mt19937 mt(rd());
-
-		normal_distribution<double> rand_gen(0.0,0.1);
-
-
-	auto rhop  = new Resonances::RBW("rhop",
-			Variable("rhop_amp_real", 1),
-			Variable("rhop_amp_imag", 0),
-			fixedRhoMass,
-			fixedRhoWidth,
-			1,
-			PAIR_12);
-
-
-
-
-
-
-    auto var_func = [&](std::string name, double start, double err) -> Variable {
-       return fixAmps ?
-              Variable(name, start) :
-              Variable(name, start + rand_gen(mt), err, 0, 0);
-    };*/
-
-
 
   //phi
   Variable phi_amp_real("phi_amp_real", 1);
@@ -500,8 +484,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff,bool fixAmps) {
   fixedPhiWidth.setFixed(true);
 
 ResonancePdf* phi  = new Resonances::RBW("phi",phi_amp_real,phi_amp_imag,fixedPhiMass,fixedPhiWidth,1,PAIR_12,true);
-
-ResonancePdf* phi13  = new Resonances::RBW("phi13",phi_amp_real,phi_amp_imag,fixedPhiMass,fixedPhiWidth,1,PAIR_13,true);
+//ResonancePdf* phi13  = new Resonances::RBW("phi13",phi_amp_real,phi_amp_imag,fixedPhiMass,fixedPhiWidth,1,PAIR_13,true);
 
 
   // f0(980)
@@ -512,6 +495,7 @@ ResonancePdf* phi13  = new Resonances::RBW("phi13",phi_amp_real,phi_amp_imag,fix
   Variable rg1og2("rg1og2", 4.21);//,1.0,5.0);
 
   ResonancePdf* f0  = new Resonances::FLATTE("f0",f0_amp_real,f0_amp_imag,f0Mass,f0g1,rg1og2,PAIR_12, true); //Required to be symmetric
+	//ResonancePdf* f013  = new Resonances::FLATTE("f013",f0_amp_real,f0_amp_imag,f0Mass,f0g1,rg1og2,PAIR_13, true); //Required to be symmetric
 
   // f0(X)
 
@@ -521,24 +505,31 @@ ResonancePdf* phi13  = new Resonances::RBW("phi13",phi_amp_real,phi_amp_imag,fix
   Variable f0XWidth("f0XWidth",  0.309491);//,   0.00001, 0.00005, 3.00);
 
   ResonancePdf* f0X  = new Resonances::RBW("f0X",f0X_amp_real,f0X_amp_imag,f0XMass,f0XWidth,(unsigned int)0,PAIR_12, true); //Required to be symmetric
+	//ResonancePdf* f0X13  = new Resonances::RBW("f0X13",f0X_amp_real,f0X_amp_imag,f0XMass,f0XWidth,(unsigned int)0,PAIR_13, true); //Required to be symmetric
 
   // NR
-  Variable nonr_amp_real("nonr_amp_real", 0.0,   0.001, -100, +100);
+  Variable nonr_amp_real("nonr_amp_real", 1.0,   0.001, -100, +100);
   Variable nonr_amp_imag("nonr_amp_imag", 0.0,   0.001, -100, +100);
   ResonancePdf* nonr  = new Resonances::NonRes("nonr",nonr_amp_real,nonr_amp_imag);
 
   //bool fixAmps = false;
-  ResonancePdf* swave = loadPWAResonance(pwa_file, fixAmps,PAIR_12);
-ResonancePdf* swave13 = loadPWAResonance(pwa_file, fixAmps,PAIR_13);
+  ResonancePdf *swave_12, *swave_13;
+	std::tie(swave_12, swave_13) =loadPWAResonance(pwa_file, fixAmps);
+
 
   dtop0pp.resonances.push_back(phi);
-  dtop0pp.resonances.push_back(swave);
-dtop0pp.resonances.push_back(swave13);
+	//dtop0pp.resonances.push_back(phi13);
+
+	dtop0pp.resonances.push_back(swave_12);
+	dtop0pp.resonances.push_back(swave_13);
 
 	//dtop0pp.resonances.push_back(f0X);
+	//dtop0pp.resonances.push_back(f0X13);
+
 	//dtop0pp.resonances.push_back(f0);
+	//dtop0pp.resonances.push_back(f013);
+
 	dtop0pp.resonances.push_back(nonr);
-	dtop0pp.resonances.push_back(phi13);
 
 
 
@@ -561,13 +552,12 @@ dtop0pp.resonances.push_back(swave13);
   return new DalitzPlotPdf("signalPDF", m12, m13, eventNumber, dtop0pp, eff);
 }
 
-double DalitzNorm(GooPdf* overallSignal,int N,double phi){
-		double max_pdf_value = phi*1.1;
+std::tuple<double,double> DalitzNorm(GooPdf* overallSignal,int N){
+
 
 		random_device rd;
 		mt19937 mt(rd());
 		uniform_real_distribution<double> xyvalues(0.9,2.0);
-		uniform_real_distribution<double> rpdfValues(0.0,max_pdf_value);
 
 		std::vector<Observable> vars;
 		vars.push_back(m12);
@@ -579,7 +569,6 @@ double DalitzNorm(GooPdf* overallSignal,int N,double phi){
     UnbinnedDataSet data(vars);
 		eventNumber = 0;
 
-		std::ofstream wt2("toyData.txt");
 
 		for(int i=0; i<N ; i++){
 
@@ -587,53 +576,57 @@ double DalitzNorm(GooPdf* overallSignal,int N,double phi){
 			m13 = xyvalues(mt);
 
 
+
 				if(cpuDalitz(m12.getValue(), m13.getValue())==1 ){
-        	data.addEvent();
+
 					eventNumber.setValue(eventNumber.getValue()+1);
-					}
+					data.addEvent();
+
+				}
 
 		}
+
 
 
 		overallSignal->setData(&data);
 		signalDalitz->setDataSize(data.getNumEvents());
 		std::vector<std::vector<double>> pdfValues = overallSignal->getCompProbsAtDataPoints();
 
-		int  hit = 0;
-		int	 miss = 0;
 
 		double buffer = 0;
+
+		cout<< "Sample Size = " << pdfValues[0].size() << endl;
 
 		 for(int k=0; k < pdfValues[0].size();k++){
 
 			 buffer += pdfValues[0][k];
 
-		 	if(rpdfValues(mt) < pdfValues[0][k]){
-		 		hit++;
-					data.loadEvent(k);
-					wt2 << m12.getValue() << " " << m13.getValue() << std::endl;
+		}
 
-		 	}else{
-		 		miss++;
-		 	}
-		 }
+		double  mean = buffer/N;
+		double diff = 0;
 
-		 wt2.close();
+		for(int l=0;l<pdfValues[0].size();l++){
 
+			diff += (pdfValues[0][l] - mean)*(pdfValues[0][l] - mean);
 
-		double H = (m12.getUpperLimit() - m12.getLowerLimit())*(m13.getUpperLimit() - m13.getLowerLimit()) ; //Area
+		}
 
-//		hit = data.getNumEvents();
+		double variance = diff/(N-1);
+		double sigma = sqrt(variance);
+		double RMS = sigma*V/sqrt(N);
 
-		double integral = H*hit/N ;
+		double integral = V*mean;
 
-		return integral;
+		return std::make_tuple(integral,RMS);
 
 }
 
-void runIntegration(int n = 100){
+
+void runIntegration(int N = 10000){
 
 	  //TApplication* rootapp = new TApplication("rootapp",&argc,argv);
+
 
 	signalDalitz = makeSignalPdf(0,false);
 
@@ -643,56 +636,14 @@ void runIntegration(int n = 100){
 
 	ProdPdf* overallSignal = new ProdPdf("overallSignal", comps);
 
-	int N = 100000;
+	auto integral = DalitzNorm(overallSignal,N);
 
-	ofstream wt3("integral.txt");
-
-	double integral = 0;
-
-
-	std::cout << "start ! "<< std::endl;
-
-	for(int i=0;i<n;i++){
-
-		integral = DalitzNorm(overallSignal,N,1.8);
-
-		wt3 << integral << std::endl;
-
-	  std::cout << "integral " << i << " = " << integral << std::endl;
-
-	}
-
-	wt3.close();
-
-	std::cout << "end !\n\n" << std::endl;
-
-	TCanvas *c = new TCanvas("c","",800,800);
-	TH1F *hist= new TH1F();
-	TTree tree("integral.txt","x");
-	tree.ReadFile("integral.txt", "Integral");
-	hist->SetTitle("Integral");
-	hist->GetXaxis()->SetTitle("Values");
-	hist->GetYaxis()->SetTitle("Frequency");
-	tree.Draw("Integral>>hist");
-	c->SaveAs("histogram.png");
-
-	TCanvas *d = new TCanvas("d","",800,800);
-	TH1F *hist2= new TH1F();
-	TTree tree2("toyData.txt","m12:m13");
-	tree2.ReadFile("toyData.txt", "m12:m13");
-	tree2.Draw("m12:m13>>hist2","","colz");
-	d->SaveAs("toyDalitz.png");
-
-
-	//std::cout << "mean: " << hist->GetMean() << "\n";
-	//std::cout << "rms: " << hist->GetRMS() << "\n";
-
-
-
-	//rootapp->Run();
+	std::cout  << "Integral: " << std::get<0>(integral) <<  '\t' << "RMS: " << std::get<1>(integral) << "\n\n";
 
 
 }
+
+
 
 void drawFitPlotsWithPulls(TH1* hd, TH1* ht, string plotdir){
 	const char* hname = hd->GetName();
@@ -825,7 +776,7 @@ void runToyFit (std::string toyFileName) {
 	m13 = Observable("m13", 0.9, 2.0);
 	m12.setNumBins(nbins);
 	m13.setNumBins(nbins);
-	eventNumber = EventNumber("eventNumber", 0, INT_MAX);
+	eventNumber = EventNumber("eventNumber", 0,INT_MAX);
 	getToyData(toyFileName);
 
 
@@ -870,10 +821,11 @@ int main (int argc, char** argv) {
         ->excludes("--int");
 
 
-		int number;
+		int N;
 		auto run = app.add_subcommand("run");
-		run->add_option("N", number, "How many integrations do you want? N=100")
+		run->add_option("N",N, "")
 		   ->required();
+
 
     int value;
     auto gen = app.add_subcommand("gen");
@@ -900,7 +852,7 @@ int main (int argc, char** argv) {
 	gStyle->SetLineColor(1);
 	gStyle->SetPalette(kViridis, 0);
 	gStyle->SetNumberContours(512);
-	gStyle->SetOptStat("RM");
+	gStyle->SetOptStat("RMe");
 	foo = new TCanvas();
 	foodal = new TCanvas();
 	foodal->Size(10, 10);
@@ -912,7 +864,7 @@ int main (int argc, char** argv) {
 	    runToyGeneration(value);
 		if(*run) {
 				CLI::AutoTimer timer("Integration");
-				runIntegration(number);
+				runIntegration(N);
 		}
 
 	// Print total minimization time
