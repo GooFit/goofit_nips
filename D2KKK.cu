@@ -43,7 +43,6 @@
 using namespace std;
 using namespace GooFit;
 
-const int PI = 3.14159265358979323846;
 
 TCanvas* foo;
 TCanvas* foodal;
@@ -71,7 +70,7 @@ Observable m13("m13", 0.9, 2.0);
 EventNumber eventNumber("eventNumber");
 bool fitMasses = false;
 Variable fixedPhiMass("phi_mass", 1.019461, 0.01, 0.7, 1.8);
-Variable fixedPhiWidth("phi_width", 0.004266, 0.001, 1e-5, 1e-1);
+Variable fixedPhiWidth("phi_width",0.004266, 0.001, 1e-5, 1e-1);
 
 const fptype _mDp = 1.86962;
 const fptype KPlusMass = 0.493677;
@@ -421,7 +420,7 @@ vector<fptype> HH_bin_limits;
 vector<Variable> pwa_coefs_amp;
 vector<Variable> pwa_coefs_phs;
 
-std::tuple<ResonancePdf*,ResonancePdf*> loadPWAResonance(const string fname = pwa_file, bool fixAmp = false){
+ResonancePdf* loadPWAResonance(const string fname = pwa_file, bool fixAmp = false){
   std::ifstream reader;
   reader.open(fname.c_str());
   assert(reader.good());
@@ -461,10 +460,11 @@ std::tuple<ResonancePdf*,ResonancePdf*> loadPWAResonance(const string fname = pw
 	 }
   cout<<"Numbers loaded: "<<HH_bin_limits.size()<<" / "<<i<<endl;
 
-  ResonancePdf* swave_12 = new Resonances::Spline("swave_12", swave_amp_real,swave_amp_imag, HH_bin_limits, pwa_coefs_amp, pwa_coefs_phs,PAIR_12);
-	ResonancePdf* swave_13 = new Resonances::Spline("swave_13", swave_amp_real,swave_amp_imag, HH_bin_limits, pwa_coefs_amp, pwa_coefs_phs,PAIR_13);
+  ResonancePdf* swave_12 = new Resonances::Spline("swave_12", swave_amp_real,swave_amp_imag, HH_bin_limits, pwa_coefs_amp, pwa_coefs_phs,PAIR_12,true);
 
-	return std::make_tuple(swave_12,swave_13);
+
+
+	return swave_12;
 }
 
 
@@ -484,8 +484,7 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff,bool fixAmps) {
   fixedPhiMass.setFixed(true);
   fixedPhiWidth.setFixed(true);
 
-ResonancePdf* phi  = new Resonances::RBW("phi",phi_amp_real,phi_amp_imag,fixedPhiMass,fixedPhiWidth,1,PAIR_12,true);
-//ResonancePdf* phi13  = new Resonances::RBW("phi13",phi_amp_real,phi_amp_imag,fixedPhiMass,fixedPhiWidth,1,PAIR_13,true);
+	ResonancePdf* phi  = new Resonances::RBW("phi",phi_amp_real,phi_amp_imag,fixedPhiMass,fixedPhiWidth,1,PAIR_12,true);
 
 
   // f0(980)
@@ -496,7 +495,6 @@ ResonancePdf* phi  = new Resonances::RBW("phi",phi_amp_real,phi_amp_imag,fixedPh
   Variable rg1og2("rg1og2", 4.21);//,1.0,5.0);
 
   ResonancePdf* f0  = new Resonances::FLATTE("f0",f0_amp_real,f0_amp_imag,f0Mass,f0g1,rg1og2,PAIR_12, true); //Required to be symmetric
-	//ResonancePdf* f013  = new Resonances::FLATTE("f013",f0_amp_real,f0_amp_imag,f0Mass,f0g1,rg1og2,PAIR_13, true); //Required to be symmetric
 
   // f0(X)
 
@@ -506,30 +504,19 @@ ResonancePdf* phi  = new Resonances::RBW("phi",phi_amp_real,phi_amp_imag,fixedPh
   Variable f0XWidth("f0XWidth",  0.309491);//,   0.00001, 0.00005, 3.00);
 
   ResonancePdf* f0X  = new Resonances::RBW("f0X",f0X_amp_real,f0X_amp_imag,f0XMass,f0XWidth,(unsigned int)0,PAIR_12, true); //Required to be symmetric
-	//ResonancePdf* f0X13  = new Resonances::RBW("f0X13",f0X_amp_real,f0X_amp_imag,f0XMass,f0XWidth,(unsigned int)0,PAIR_13, true); //Required to be symmetric
 
   // NR
   Variable nonr_amp_real("nonr_amp_real", 1.0,   0.001, -100, +100);
   Variable nonr_amp_imag("nonr_amp_imag", 0.0,   0.001, -100, +100);
   ResonancePdf* nonr  = new Resonances::NonRes("nonr",nonr_amp_real,nonr_amp_imag);
 
-  //bool fixAmps = false;
-  ResonancePdf *swave_12, *swave_13;
-	std::tie(swave_12, swave_13) =loadPWAResonance(pwa_file, fixAmps);
+  ResonancePdf *swave_12=loadPWAResonance(pwa_file, fixAmps);
 
 
   dtop0pp.resonances.push_back(phi);
-	//dtop0pp.resonances.push_back(phi13);
-
-	dtop0pp.resonances.push_back(swave_12);
-	dtop0pp.resonances.push_back(swave_13);
-
+	//dtop0pp.resonances.push_back(swave_12);
 	//dtop0pp.resonances.push_back(f0X);
-	//dtop0pp.resonances.push_back(f0X13);
-
 	//dtop0pp.resonances.push_back(f0);
-	//dtop0pp.resonances.push_back(f013);
-
 	dtop0pp.resonances.push_back(nonr);
 
 
@@ -634,43 +621,48 @@ void runIntegration(int N = 10000){
 
 	ProdPdf* overallSignal = new ProdPdf("overallSignal", comps);
 
-	double buffer = 0;
-	double buffer_error = 0;
-
 	double arr[100];
+	double arr_error[100];
 	std::fill(arr,arr+100, 0);
+	std::fill(arr_error,arr_error+100, 0);
 
+
+	TH1D* integral_hist = new TH1D("integral","integral",30,arr[0]*(0.95),arr[99]*(1.05));
 
 	for(int i = 0; i < 100 ; i++){
 
 			auto integral2 = DalitzNorm(overallSignal,N);
 			arr[i] = std::get<0>(integral2);
-			buffer+=std::get<0>(integral2);
-			buffer_error +=std::get<1>(integral2);
-	}
-
-	double diff = 0;
-
-	for(int l=0;l<100;l++){
-
-		diff += (arr[l] - buffer/100)*(arr[l] - buffer/100);
+			arr_error[i] = std::get<1>(integral2);
 
 	}
 
-	double variance = diff/(100-1);
-	double sigma = sqrt(variance);
+	std::sort(arr,arr+100);
+
+	for(int l= 0; l<100 ; l++){
+
+		integral_hist->Fill(arr[l]);
+	}
+
+	integral_hist->GetXaxis()->SetTitle("Integral");
+	integral_hist->GetYaxis()->SetTitle("Frequency");
+
+	TCanvas* integral_Canvas = new TCanvas("integral","integral",800,800);
+	integral_hist->Draw("E");
+	integral_Canvas->SaveAs("D2KKK_Plots/Integral.png");
+
 
 	std::cout <<  '\n';
-	std::cout  << "<E>_{N_Integrations=100}: " << buffer/100 <<'\t'<< "stdError: "<< sigma/sqrt(100) <<"\t\t"  << "stdDev: "<< sigma << "\n\n";
+	std::cout  << "<E>_{N_Integrations=100}: " << integral_hist->GetMean() <<'\t'<< "stdError: "<< integral_hist->GetMeanError() <<"\t\t"  << "stdDev: "<< integral_hist->GetStdDev() << "\n\n";
 
   double integral, sigma2;
 	std::tie(integral,sigma2) = DalitzNorm(overallSignal,N);
 
 	std::cout  << "<E>_{N_Integrations=1}: " << integral << '\t' << "<delta_E>: " << sigma2<< "\n\n";
+	std::cout << "|stdDev - <delta_E>|= " <<abs(integral_hist->GetStdDev() - sigma2) << "\n\n";
 
-	std::cout << "|stdDev - <delta_E>|= " <<abs(sigma - sigma2) << '\n\n';
-
-
+	delete integral_Canvas;
+	delete integral_hist;
 
 }
 
@@ -831,7 +823,7 @@ void runToyFit (std::string toyFileName) {
     datapdf.setVerbosity(verbosity);
 
 		 // Maybe make optional? With a command line switch?
-	datapdf.fit();
+	if(fit) datapdf.fit();
 	stopCPU = times(&stopProc);
 	gettimeofday(&stopTime, NULL);
 

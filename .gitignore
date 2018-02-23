@@ -6,5 +6,7 @@
 *.fatbin
 */build*
 notes.txt
-./D2KKK_Plots
-.gitignore
+*/D2KKK_Plots
+*.png
+*.pdf
+*.root
