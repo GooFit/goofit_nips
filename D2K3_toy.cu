@@ -89,32 +89,6 @@ void makeToyDalitzData(GooPdf *overallSignal, const int iSeed = 0, string datadi
 
 DalitzPlotPdf *makeSignalPdf(GooPdf *eff = 0, bool fixAmps = false);
 
-fptype cpuGetM23(fptype massPZ, fptype massPM) { return (massSum.getValue() - massPZ - massPM); }
-
-bool cpuDalitz(
-    fptype m_12, fptype m_13, fptype bigM = MMass, fptype dm1 = D1Mass, fptype dm2 = D2Mass, fptype dm3 = D3Mass) {
-    if(m_12 < pow(dm1 + dm2, 2))
-        return false; // This m_12 cannot exist, it's less than the square of the (1,2) particle mass.
-    if(m_12 > pow(bigM - dm3, 2))
-        return false; // This doesn't work either, there's no room for an at-rest 3 daughter.
-
-    // Calculate energies of 1 and 3 particles in m_12 rest frame.
-    fptype e1star = 0.5 * (m_12 - dm2 * dm2 + dm1 * dm1) / sqrt(m_12);
-    fptype e3star = 0.5 * (bigM * bigM - m_12 - dm3 * dm3) / sqrt(m_12);
-
-    // Bounds for m_13 at this value of m_12.
-    fptype minimum
-        = pow(e1star + e3star, 2) - pow(sqrt(e1star * e1star - dm1 * dm1) + sqrt(e3star * e3star - dm3 * dm3), 2);
-    if(m_13 < minimum)
-        return false;
-    fptype maximum
-        = pow(e1star + e3star, 2) - pow(sqrt(e1star * e1star - dm1 * dm1) - sqrt(e3star * e3star - dm3 * dm3), 2);
-    if(m_13 > maximum)
-        return false;
-
-    return true;
-}
-
 void makeToyDalitzData(GooPdf *overallSignal, const int iSeed, string datadir, const int nTotal) {
     std::vector<Observable> vars;
     vars.push_back(m12);
@@ -130,7 +104,7 @@ void makeToyDalitzData(GooPdf *overallSignal, const int iSeed, string datadir, c
         for(int j = 0; j < m13.getNumBins(); ++j) {
             m13.setValue(m13.getLowerLimit()
                          + (m13.getUpperLimit() - m13.getLowerLimit()) * (j + 0.5) / m13.getNumBins());
-            if(!cpuDalitz(m12.getValue(), m13.getValue(), _mD0, piZeroMass, piPlusMass, piPlusMass))
+            if(!inDalitz(m12.getValue(), m13.getValue(), _mD0, piZeroMass, piPlusMass, piPlusMass))
                 continue;
             eventNumber.setValue(ncount);
             ncount++;
@@ -502,7 +476,7 @@ double DalitzNorm(GooPdf *overallSignal, int N, double phi) {
         m12 = xyvalues(mt);
         m13 = xyvalues(mt);
 
-        if(cpuDalitz(m12.getValue(), m13.getValue(), _mD0, piZeroMass, piPlusMass, piPlusMass) == 1) {
+        if(inDalitz(m12.getValue(), m13.getValue(), _mD0, piZeroMass, piPlusMass, piPlusMass) == 1) {
             data.addEvent();
             eventNumber.setValue(eventNumber.getValue() + 1);
         }
@@ -691,7 +665,7 @@ void makeToyDalitzPdfPlots(GooPdf *overallSignal, string plotdir = "plots") {
         for(int j = 0; j < m13.getNumBins(); ++j) {
             m13.setValue(m13.getLowerLimit()
                          + (m13.getUpperLimit() - m13.getLowerLimit()) * (j + 0.5) / m13.getNumBins());
-            if(!cpuDalitz(m12.getValue(), m13.getValue(), _mD0, piZeroMass, piPlusMass, piPlusMass))
+            if(!inDalitz(m12.getValue(), m13.getValue(), _mD0, piZeroMass, piPlusMass, piPlusMass))
                 continue;
             eventNumber.setValue(evtCounter);
             evtCounter++;
