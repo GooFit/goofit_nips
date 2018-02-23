@@ -40,6 +40,8 @@
 #include <goofit/UnbinnedDataSet.h>
 #include <goofit/Variable.h>
 
+#include <goofit/detail/Style.h>
+
 using namespace std;
 using namespace GooFit;
 
@@ -249,16 +251,15 @@ void getToyData(std::string toyFileName) {
                     m13.getNumBins(),
                     m13.getLowerLimit(),
                     m13.getUpperLimit());
-    std::vector<Observable> vars;
-    vars.push_back(m12);
-    vars.push_back(m13);
-    vars.push_back(eventNumber);
-    data = new UnbinnedDataSet(vars);
-    //  const int MAXEVT = 1e4;
+    
+    data = new UnbinnedDataSet({m12, m13, eventNumber});
+
 
     const string suffix = ".root";
+    
     if(toyFileName.rfind(suffix) + suffix.length() == toyFileName.length()) {
-        std::cout << "Reading file " << toyFileName << std::endl;
+        GOOFIT_INFO("Reading ROOT file: {}", toyFileName);
+        
         TFile *f = TFile::Open(toyFileName.c_str());
         TTree *t = (TTree *)f->Get("DecayTree");
         // TTree*t = (TTree*)f->Get("newTree");
@@ -280,44 +281,15 @@ void getToyData(std::string toyFileName) {
         }
         f->Close();
     } else {
+        GOOFIT_INFO("Reading 3 column TEXT file: {}", toyFileName);
         std::ifstream reader;
         reader.open(toyFileName.c_str());
         std::string buffer;
-        while(!reader.eof()) {
-            reader >> buffer;
-            if(buffer == "====")
-                break;
-            // std::cout << buffer;
-        }
 
-        double dummy = 0;
-        while(!reader.eof()) {
-            reader >> dummy;
-            reader >> dummy; // m23, m(pi+ pi-), called m12 in processToyRoot convention.
-            reader >> m12;   // Already swapped according to D* charge. m12 = m(pi+pi0)
+        while(reader) {
+            reader >> eventNumber;
+            reader >> m12;
             reader >> m13;
-
-            // Errors on Dalitz variables
-            reader >> dummy;
-            reader >> dummy;
-            reader >> dummy;
-
-            reader >> dummy; // Decay time
-            reader >> dummy; // sigma_t
-
-            reader >> dummy; // Md0
-            reader >> dummy; // deltaM
-            reader >> dummy; // ProbSig
-            reader >> dummy; // Dst charge
-            reader >> dummy; // Run
-            reader >> dummy; // Event
-            reader >> dummy; // Signal and four bkg fractions.
-            reader >> dummy;
-            reader >> dummy;
-            reader >> dummy;
-            reader >> dummy;
-
-            eventNumber.setValue(data->getNumEvents());
             data->addEvent();
 
             dalitzplot.Fill(m12.getValue(), m13.getValue());
@@ -811,6 +783,8 @@ void runToyFit(std::string toyFileName) {
     m13.setNumBins(nbins);
     getToyData(toyFileName);
 
+    GOOFIT_INFO("Number of events in dataset: {}", data->getNumEvents());
+    
     signalDalitz = makeSignalPdf();
     comps.clear();
     comps.push_back(signalDalitz);
@@ -865,20 +839,22 @@ int main(int argc, char **argv) {
     if(name_opt->count())
         name = fmt::format("dalitz_mytoyMC_{0:3}.txt", fit_value);
 
-    gStyle->SetCanvasBorderMode(0);
-    gStyle->SetCanvasColor(10);
-    gStyle->SetFrameFillColor(10);
-    gStyle->SetFrameBorderMode(0);
-    gStyle->SetPadColor(0);
-    gStyle->SetTitleColor(1);
-    gStyle->SetStatColor(0);
-    gStyle->SetFillColor(0);
-    gStyle->SetFuncWidth(1);
-    gStyle->SetLineWidth(1);
-    gStyle->SetLineColor(1);
-    gStyle->SetPalette(kViridis, 0);
-    gStyle->SetNumberContours(512);
-    gStyle->SetOptStat("RMe");
+    GooFit::setROOTStyle();
+    
+//    gStyle->SetCanvasBorderMode(0);
+//    gStyle->SetCanvasColor(10);
+//    gStyle->SetFrameFillColor(10);
+//    gStyle->SetFrameBorderMode(0);
+//    gStyle->SetPadColor(0);
+//    gStyle->SetTitleColor(1);
+//    gStyle->SetStatColor(0);
+//    gStyle->SetFillColor(0);
+//    gStyle->SetFuncWidth(1);
+//    gStyle->SetLineWidth(1);
+//    gStyle->SetLineColor(1);
+//    gStyle->SetPalette(kViridis, 0);
+//    gStyle->SetNumberContours(512);
+//    gStyle->SetOptStat("RMe");
     foo    = new TCanvas();
     foodal = new TCanvas();
     foodal->Size(10, 10);
