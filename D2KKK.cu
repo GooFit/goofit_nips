@@ -43,7 +43,6 @@
 using namespace std;
 using namespace GooFit;
 
-
 TCanvas* foo;
 TCanvas* foodal;
 timeval startTime, stopTime, totalTime;
@@ -209,12 +208,9 @@ void makeToyDalitzData (GooPdf* overallSignal, const int iSeed, string datadir, 
 }
 
 void runToyGeneration(int numFile = 0){
-	m12   = Observable("m12",   0.9, 2.0);
 	m12.setNumBins(1500);
-
-	m13   = Observable("m13",   0.9, 2.0);
 	m13.setNumBins(1500);
-	eventNumber = EventNumber("eventNumber", 0, INT_MAX);
+    
 	signalDalitz = makeSignalPdf(0,false);
 	vector<PdfBase*> comps;
 	comps.clear();
@@ -445,7 +441,7 @@ ResonancePdf* loadPWAResonance(const string fname = pwa_file, bool fixAmp = fals
       pwa_coefs_amp.push_back(va);
       pwa_coefs_phs.push_back(vp);
       i++;
-      cout << "s12 = " << e1*e1 << ", mag = " << emag << ", phs = " << (180/PI)*ephs << endl;
+      cout << "s12 = " << e1*e1 << ", mag = " << emag << ", phs = " << (180/M_PI)*ephs << endl;
   }
   //const fptype scale = 1;
   Variable swave_amp_real("swave_amp_real", 3.0,   0.001, 0, 0);
@@ -488,8 +484,8 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff,bool fixAmps) {
 
 
   // f0(980)
-  Variable f0_amp_real("f0_amp_real",    12.341*cos(-62.852*(PI/180)),   0.0001, -100, 100);
-  Variable f0_amp_imag("f0_amp_imag",    12.341*sin(-62.852*(PI/180)),   0.0001, -100, 100);
+  Variable f0_amp_real("f0_amp_real",    12.341*cos(-62.852*(M_PI/180)),   0.0001, -100, 100);
+  Variable f0_amp_imag("f0_amp_imag",    12.341*sin(-62.852*(M_PI/180)),   0.0001, -100, 100);
   Variable f0Mass("f0Mass", 0.965);
   Variable f0g1("f0g1", 0.165);
   Variable rg1og2("rg1og2", 4.21);//,1.0,5.0);
@@ -498,8 +494,8 @@ DalitzPlotPdf* makeSignalPdf (GooPdf* eff,bool fixAmps) {
 
   // f0(X)
 
-  Variable f0X_amp_real("f0X_amp_real",  11.918*cos(20.248*(PI/180)),   0.0001, -100, 100);
-  Variable f0X_amp_imag("f0X_amp_imag",  11.918*sin(20.248*(PI/180)),   0.0001, -100, 100);
+  Variable f0X_amp_real("f0X_amp_real",  11.918*cos(20.248*(M_PI/180)),   0.0001, -100, 100);
+  Variable f0X_amp_imag("f0X_amp_imag",  11.918*sin(20.248*(M_PI/180)),   0.0001, -100, 100);
   Variable f0XMass("f0XMass",    1.41478);//,   0.00001,    1.00, 3.00);
   Variable f0XWidth("f0XWidth",  0.309491);//,   0.00001, 0.00005, 3.00);
 
@@ -795,12 +791,11 @@ void makeToyDalitzPdfPlots (GooPdf* overallSignal, string plotdir = "plots") {
 }
 
 void runToyFit (std::string toyFileName) {
-	m12 = Observable("m12", 0.9, 2.0);
-	m13 = Observable("m13", 0.9, 2.0);
 	m12.setNumBins(nbins);
 	m13.setNumBins(nbins);
-	eventNumber = EventNumber("eventNumber", 0,INT_MAX);
 	getToyData(toyFileName);
+    
+    
 
 
 	signalDalitz = makeSignalPdf();
