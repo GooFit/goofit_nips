@@ -12,6 +12,7 @@
 #include <TStyle.h>
 #include <TText.h>
 #include <TTree.h>
+#include <TString.h>
 
 // System stuff
 #include <CLI/Timer.hpp>
@@ -21,8 +22,6 @@
 #include <math.h>
 #include <random>
 #include <stdio.h>
-#include <sys/time.h>
-#include <sys/times.h>
 #include <tuple>
 
 // GooFit stuff
@@ -41,15 +40,11 @@
 #include <goofit/Variable.h>
 
 #include <goofit/detail/Style.h>
+#include <goofit/PDFs/physics/DalitzPlotter.h>
 
 using namespace std;
 using namespace GooFit;
 
-TCanvas *foo;
-TCanvas *foodal;
-timeval startTime, stopTime, totalTime;
-clock_t startCPU, stopCPU;
-tms startProc, stopProc;
 UnbinnedDataSet *data    = 0;
 const unsigned int nbins = 1000;
 TH2F *weightHistogram    = 0;
@@ -102,121 +97,84 @@ std::vector<PdfBase *> comps;
 int verbosity = 3;
 
 GooPdf *kzero_veto = 0;
-char strbuffer[1000];
 double mesonRad = 1.5;
 DalitzPlotPdf *signalDalitz;
 bool doEffSwap   = true;
 bool saveEffPlot = true;
 bool saveBkgPlot = true;
 
-void makeToyDalitzData(GooPdf *overallSignal, const int iSeed = 0, string datadir = ".", const int nTotal = 1.e6);
+
+// Declarations for (some of) the functions
 
 DalitzPlotPdf *makeSignalPdf(GooPdf *eff = 0, bool fixAmps = false);
-
 fptype cpuGetM23(fptype massPZ, fptype massPM) { return (massSum.getValue() - massPZ - massPM); }
 
 
-void makeToyDalitzData(GooPdf *overallSignal, const int iSeed, string datadir, const int nTotal) {
-    std::vector<Observable> vars;
-    vars.push_back(m12);
-    vars.push_back(m13);
-    vars.push_back(eventNumber);
-    data = new UnbinnedDataSet(vars);
-    UnbinnedDataSet currData(vars);
-    std::vector<std::vector<double>> pdfValues;
-    int ncount = 0;
-    TRandom3 donram(iSeed);
-    for(int i = 0; i < (m12.getNumBins()); ++i) {
-        m12.setValue(m12.getLowerLimit() + (m12.getUpperLimit() - m12.getLowerLimit()) * (i + 0.5) / m12.getNumBins());
-        for(int j = 0; j < m13.getNumBins(); ++j) {
-            m13.setValue(m13.getLowerLimit()
-                         + (m13.getUpperLimit() - m13.getLowerLimit()) * (j + 0.5) / m13.getNumBins());
-            if(!inDalitz(m12.getValue(), m13.getValue(), MMass, D1Mass, D2Mass, D3Mass))
-                continue;
-            eventNumber.setValue(ncount);
-            ncount++;
-            currData.addEvent();
-        }
+void makeToyDalitzData(GooPdf *overallSignal, std::string name, size_t nTotal) {
+    
+    DalitzPlotter dp(overallSignal, signalDalitz);
+    
+    // Generate data
+    data = new UnbinnedDataSet({m12, m13, eventNumber});
+    
+    { // Plotting block
+        TCanvas foo;
+        auto th1 = dp.make2D();
+        th1->Rebin2D(5,5);
+        th1->Draw("COLZ");
+        foo.SaveAs("plots/plot1.png");
     }
-    signalDalitz->setDataSize(currData.getNumEvents());
-    overallSignal->setData(&currData);
-
-    pdfValues = overallSignal->getCompProbsAtDataPoints();
+        
+    dp.fillDataSetMC(*data, nTotal);
+    
     TH2F dalitzpp0_dat_hist("dalitzpp0_dat_hist",
                             "",
-                            m12.getNumBins(),
+                            200,
                             m12.getLowerLimit(),
                             m12.getUpperLimit(),
-                            m13.getNumBins(),
+                            200,
                             m13.getLowerLimit(),
                             m13.getUpperLimit());
     dalitzpp0_dat_hist.GetXaxis()->SetTitle("m^{2}(K^{-}K^{+}) [GeV^{2}]");
     dalitzpp0_dat_hist.GetYaxis()->SetTitle("m^{2}(K^{-} K^{+}) [GeV^{2}]");
-    ncount = 0;
-    ofstream writer;
-    sprintf(strbuffer, "%s/dalitz_mytoyMC_%03d.txt", datadir.c_str(), iSeed);
-    writer.open(strbuffer);
-    vector<double> fIntegral;
-    fIntegral.push_back(pdfValues[0][0]);
-    Int_t ncells = pdfValues[0].size();
-    for(unsigned int j = 1; j < ncells; ++j) {
-        fIntegral.push_back(pdfValues[0][j] + fIntegral[j - 1]);
-    }
-    for(unsigned int j = 0; j < ncells; ++j)
-        fIntegral[j] /= fIntegral[ncells - 1];
-    ncount      = 0;
-    int nEvents = donram.Poisson(nTotal);
-    for(int iEvt = 0; iEvt < nEvents; iEvt++) {
-        double r = donram.Rndm();
-        // Binary search for fIntegral[cell-1] < r < fIntegral[cell]
-        int lo = 0, hi = ncells - 1, mid = 0;
-        while(lo <= hi) {
-            mid = lo + (hi - lo) / 2;
-            if(r <= fIntegral[mid] && (mid == 0 || r > fIntegral[mid - 1]))
-                break;
-            else if(r > fIntegral[mid])
-                lo = mid + 1;
-            else
-                hi = mid - 1;
+    
+    // Make a writer
+    {
+        ofstream writer(name);
+        
+        // Fill histogram with generated data
+        for(size_t i=0; i<data->getNumEvents(); i++) {
+            data->loadEvent(i);
+            dalitzpp0_dat_hist.Fill(m12, m13);
+            
+            writer << i << '\t' << m12.getValue() << '\t' << m13.getValue() << '\n';
         }
-        int j          = mid;
-        double currm12 = currData.getValue(m12, j);
-        currm12 += (m12.getUpperLimit() - m12.getLowerLimit()) * (donram.Rndm() - 0.5) / m12.getNumBins();
-        double currm13 = currData.getValue(m13, j);
-        currm13 += (m13.getUpperLimit() - m13.getLowerLimit()) * (donram.Rndm() - 0.5) / m13.getNumBins();
-        eventNumber.setValue(ncount++);
-        dalitzpp0_dat_hist.Fill(currm12, currm13);
-        data->addEvent();
-        writer << ncount - 1 << '\t' << currm12 << '\t' << currm13 << std::endl;
     }
-    writer.close();
+    
+   
+    
     std::cout << "Entries generated: " << data->getNumEvents() << std::endl;
-    foodal->cd();
-    foodal->SetLogz(false);
-    dalitzpp0_dat_hist.Rebin2D(10, 10);
+    TCanvas foo;
+    foo.SetLogz(false);
+    //dalitzpp0_dat_hist.Rebin2D(10, 10);
     dalitzpp0_dat_hist.Draw("colz");
     dalitzpp0_dat_hist.SetStats(0);
-    // foodal->SaveAs("Dalitz_D2KKK_temp.root");
-    foodal->SaveAs("D2KKK_Plots/Dalitz_D2KKK_temp.png");
+    foo.SaveAs("plots/Dalitz_D2KKK_temp.png");
 }
 
-void runToyGeneration(int numFile = 0) {
+void runToyGeneration(std::string name, size_t events) {
     m12.setNumBins(1500);
     m13.setNumBins(1500);
 
     signalDalitz = makeSignalPdf(0, false);
-    vector<PdfBase *> comps;
-    comps.clear();
-    comps.push_back(signalDalitz);
 
     std::cout << "Creating overall PDF\n";
-    ProdPdf *overallSignal = new ProdPdf("overallSignal", comps);
-    gettimeofday(&startTime, NULL);
-    startCPU = times(&startProc);
-    //  makeToyDalitzData (signalDalitz);
-    makeToyDalitzData(overallSignal, numFile);
-    stopCPU = times(&stopProc);
-    gettimeofday(&stopTime, NULL);
+    ProdPdf *overallSignal = new ProdPdf("overallSignal", {signalDalitz});
+    
+    {
+        CLI::AutoTimer timer{"makeToyDalitzData"};
+        makeToyDalitzData(overallSignal, name, events);
+    }
 }
 
 void getToyData(std::string toyFileName) {
@@ -230,7 +188,6 @@ void getToyData(std::string toyFileName) {
                     m13.getUpperLimit());
     
     data = new UnbinnedDataSet({m12, m13, eventNumber});
-
 
     const string suffix = ".root";
     
@@ -273,9 +230,10 @@ void getToyData(std::string toyFileName) {
         }
     }
 
+    TCanvas foo;
     dalitzplot.SetStats(0);
     dalitzplot.Draw("colz");
-    foodal->SaveAs("dalitzplot_D2KKK_gen.png");
+    foo.SaveAs("plots/dalitzplot_D2KKK_gen.png");
 }
 
 /*GooPdf* makeKzeroVeto () {
@@ -334,12 +292,12 @@ GooPdf *makeEfficiencyPdf() {
         }
     }
     if(saveEffPlot) {
-        foodal->cd();
+        TCanvas foo;
+        foo.cd();
         weightHistogram->Draw("colz");
-        foodal->SaveAs("plots/efficiency_bins.png");
-        foodal->SetLogz(true);
-        foodal->SaveAs("plots/efficiency_bins_log.png");
-        foo->cd();
+        foo.SaveAs("plots/efficiency_bins.png");
+        foo.SetLogz(true);
+        foo.SaveAs("plots/efficiency_bins_log.png");
     }
     // Smooth
     Variable effSmoothing("effSmoothing", 0);
@@ -370,13 +328,12 @@ GooPdf *makeBackgroundPdf() {
         }
     }
     if(saveBkgPlot) {
-        foodal->cd();
+        TCanvas foo;
         bkgHistogram->Draw("colz");
-        foodal->SetLogz(false);
-        foodal->SaveAs("plots/background_bins.png");
-        foodal->SetLogz(true);
-        foodal->SaveAs("plots/background_bins_log.png");
-        foo->cd();
+        foo.SetLogz(false);
+        foo.SaveAs("plots/background_bins.png");
+        foo.SetLogz(true);
+        foo.SaveAs("plots/background_bins_log.png");
     }
     Variable *effSmoothing  = new Variable("effSmoothing", 0);
     SmoothHistogramPdf *ret = new SmoothHistogramPdf("efficiency", binBkgData, *effSmoothing);
@@ -404,10 +361,9 @@ ResonancePdf *loadPWAResonance(const string fname = pwa_file, bool fixAmp = fals
         // emag = e2;
         ephs = TMath::ATan2(e3, e2);
         // ephs = e3;
-        sprintf(strbuffer, "pwa_coef_%d_mag", i);
-        Variable va(strbuffer, emag, .000001, 0, 10000); // 0.9*emag, 1.1*emag);
-        sprintf(strbuffer, "pwa_coef_%d_phase", i);
-        Variable vp(strbuffer, ephs, .000001, -360, 360); // 0.9*ephs, 1.1*ephs);
+
+        Variable va(fmt::format("pwa_coef_{}_mag", i), emag, .000001, 0, 10000); // 0.9*emag, 1.1*emag);
+        Variable vp(fmt::format("pwa_coef_{}_phase", i), ephs, .000001, -360, 360); // 0.9*ephs, 1.1*ephs);
 
         pwa_coefs_amp.push_back(va);
         pwa_coefs_phs.push_back(vp);
@@ -482,7 +438,7 @@ DalitzPlotPdf *makeSignalPdf(GooPdf *eff, bool fixAmps) {
     Variable nonr_amp_imag("nonr_amp_imag", 0.0, 0.001, -100, +100);
     ResonancePdf *nonr = new Resonances::NonRes("nonr", nonr_amp_real, nonr_amp_imag);
 
-    ResonancePdf *swave_12 = loadPWAResonance(pwa_file, fixAmps);
+    //ResonancePdf *swave_12 = loadPWAResonance(pwa_file, fixAmps);
 
     dtop0pp.resonances.push_back(phi);
     // dtop0pp.resonances.push_back(swave_12);
@@ -574,7 +530,7 @@ void runIntegration(int N = 10000) {
     std::fill(arr, arr + 100, 0);
     std::fill(arr_error, arr_error + 100, 0);
 
-    TH1D *integral_hist = new TH1D("integral", "integral", 30, arr[0] * (0.95), arr[99] * (1.05));
+    TH1D integral_hist("integral", "integral", 30, arr[0] * (0.95), arr[99] * (1.05));
 
     for(int i = 0; i < 100; i++) {
         auto integral2 = DalitzNorm(overallSignal, N);
@@ -585,29 +541,26 @@ void runIntegration(int N = 10000) {
     std::sort(arr, arr + 100);
 
     for(int l = 0; l < 100; l++) {
-        integral_hist->Fill(arr[l]);
+        integral_hist.Fill(arr[l]);
     }
 
-    integral_hist->GetXaxis()->SetTitle("Integral");
-    integral_hist->GetYaxis()->SetTitle("Frequency");
+    integral_hist.GetXaxis()->SetTitle("Integral");
+    integral_hist.GetYaxis()->SetTitle("Frequency");
 
-    TCanvas *integral_Canvas = new TCanvas("integral", "integral", 800, 800);
-    integral_hist->Draw("E");
-    integral_Canvas->SaveAs("D2KKK_Plots/Integral.png");
+    TCanvas integral_Canvas("integral", "integral", 800, 800);
+    integral_hist.Draw("E");
+    integral_Canvas.SaveAs("plots/D2KKK_Plots_Integral.png");
 
     std::cout << '\n';
-    std::cout << "<E>_{N_Integrations=100}: " << integral_hist->GetMean() << '\t'
-              << "stdError: " << integral_hist->GetMeanError() << "\t\t"
-              << "stdDev: " << integral_hist->GetStdDev() << "\n\n";
+    std::cout << "<E>_{N_Integrations=100}: " << integral_hist.GetMean() << '\t'
+              << "stdError: " << integral_hist.GetMeanError() << "\t\t"
+              << "stdDev: " << integral_hist.GetStdDev() << "\n\n";
 
     double integral, sigma2;
     std::tie(integral, sigma2) = DalitzNorm(overallSignal, N);
 
     std::cout << "<E>_{N_Integrations=1}: " << integral << '\t' << "<delta_E>: " << sigma2 << "\n\n";
-    std::cout << "|stdDev - <delta_E>|= " << abs(integral_hist->GetStdDev() - sigma2) << "\n\n";
-
-    delete integral_Canvas;
-    delete integral_hist;
+    std::cout << "|stdDev - <delta_E>|= " << abs(integral_hist.GetStdDev() - sigma2) << "\n\n";
 }
 
 void drawFitPlotsWithPulls(TH1 *hd, TH1 *ht, string plotdir) {
@@ -622,52 +575,36 @@ void drawFitPlotsWithPulls(TH1 *hd, TH1 *ht, string plotdir) {
             break;
     }
     ht->Scale(hd->Integral() / ht->Integral());
-    foo->cd();
-    foo->Clear();
+    
+    TCanvas foo;
+    
     ht->Draw("l");
     hd->Draw("epsame");
-    sprintf(strbuffer, "%s/%s_fit.png", plotdir.c_str(), obsname);
-    foo->SaveAs(strbuffer);
-    sprintf(strbuffer, "%s/%s_fit.pdf", plotdir.c_str(), obsname);
-    foo->SaveAs(strbuffer);
-    /*    sprintf(strbuffer, "%s/%s_fit_log.pdf", plotdir.c_str(), obsname);
-          foo->SaveAs(strbuffer);*/
+    
+    foo.SaveAs(TString::Format("plots/%s_fit.png",obsname));
+    foo.SaveAs(TString::Format("plots/%s_fit.pdf",obsname));
+
 }
 
 void makeToyDalitzPdfPlots(GooPdf *overallSignal, string plotdir = "plots") {
     TH1F m12_dat_hist("m12_dat_hist", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit());
-    m12_dat_hist.SetStats(false);
-    m12_dat_hist.SetMarkerStyle(8);
-    m12_dat_hist.SetMarkerSize(1);
     m12_dat_hist.GetXaxis()->SetTitle("m^{2}(K^{-} K^{+}) [GeV]");
-    sprintf(strbuffer, "Events / %.1f MeV", 1e3 * m12_dat_hist.GetBinWidth(1));
-    m12_dat_hist.GetYaxis()->SetTitle(strbuffer);
+    m12_dat_hist.GetYaxis()->SetTitle(TString::Format("Events / %.1f MeV", 1e3 * m12_dat_hist.GetBinWidth(1)));
+    
     TH1F m12_pdf_hist("m12_pdf_hist", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit());
-    m12_pdf_hist.SetStats(false);
-    m12_pdf_hist.SetLineColor(kBlue);
-    m12_pdf_hist.SetLineWidth(3);
+    
     TH1F m13_dat_hist("m13_dat_hist", "", m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
-    m13_dat_hist.SetStats(false);
-    m13_dat_hist.SetMarkerStyle(8);
-    m13_dat_hist.SetMarkerSize(1);
     m13_dat_hist.GetXaxis()->SetTitle("m^{2}(K^{-} K^{+}) [GeV]");
-    sprintf(strbuffer, "Events / %.1f MeV", 1e3 * m13_dat_hist.GetBinWidth(1));
-    m13_dat_hist.GetYaxis()->SetTitle(strbuffer);
+    m13_dat_hist.GetYaxis()->SetTitle(TString::Format("Events / %.1f MeV", 1e3 * m13_dat_hist.GetBinWidth(1)));
+    
     TH1F m13_pdf_hist("m13_pdf_hist", "", m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
-    m13_pdf_hist.SetStats(false);
-    m13_pdf_hist.SetLineColor(kBlue);
-    m13_pdf_hist.SetLineWidth(3);
+    
     TH1F m23_dat_hist("m23_dat_hist", "", m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
-    m23_dat_hist.SetStats(false);
-    m23_dat_hist.SetMarkerStyle(8);
-    m23_dat_hist.SetMarkerSize(1.2);
     m23_dat_hist.GetXaxis()->SetTitle("m^{2}(#pi^{+} #pi^{-}) [GeV]");
-    sprintf(strbuffer, "Events / %.1f MeV", 1e3 * m13_dat_hist.GetBinWidth(1));
-    m23_dat_hist.GetYaxis()->SetTitle(strbuffer);
+    m23_dat_hist.GetYaxis()->SetTitle(TString::Format("Events / %.1f MeV", 1e3 * m13_dat_hist.GetBinWidth(1)));
+    
     TH1F m23_pdf_hist("m23_pdf_hist", "", m13.getNumBins(), m13.getLowerLimit(), m13.getUpperLimit());
-    m23_pdf_hist.SetStats(false);
-    m23_pdf_hist.SetLineColor(kBlue);
-    m23_pdf_hist.SetLineWidth(3);
+    
     double totalPdf = 0;
     double totalDat = 0;
     TH2F dalitzpp0_dat_hist("dalitzpp0_dat_hist",
@@ -726,18 +663,13 @@ void makeToyDalitzPdfPlots(GooPdf *overallSignal, string plotdir = "plots") {
         m23_pdf_hist.Fill(cpuGetM23(currm12, currm13), pdfValues[0][j]);
         totalPdf += pdfValues[0][j];
     }
-    foodal->cd();
-    foodal->SetLogz(false);
+    
+    TCanvas foo;
+    foo.SetLogz(false);
     dalitzpp0_pdf_hist.Draw("colz");
-    std::string command = "mkdir -p " + plotdir;
-    if(system(command.c_str()) != 0)
-        throw GooFit::GeneralError("Making plot directory {} failed", plotdir);
-    foodal->SaveAs((plotdir + "/dalitzpp0_pdf.png").c_str());
-    /*  m12_pdf_hist.Draw("");
-        foodal->SaveAs((plotdir + "/m12_pdf_hist.png").c_str());
-        m13_pdf_hist.Draw("");
-        foodal->SaveAs((plotdir + "/m13_pdf_hist.png").c_str());
-        if (!data) return;*/
+
+    foo.SaveAs("plots/dalitzpp0_pdf.png");
+
     for(unsigned int evt = 0; evt < data->getNumEvents(); ++evt) {
         double data_m12 = data->getValue(m12, evt);
         m12_dat_hist.Fill(data_m12);
@@ -748,7 +680,7 @@ void makeToyDalitzPdfPlots(GooPdf *overallSignal, string plotdir = "plots") {
         totalDat++;
     }
     dalitzpp0_dat_hist.Draw("colz");
-    foodal->SaveAs((plotdir + "/dalitzpp0_dat.png").c_str());
+    foo.SaveAs("plots/dalitzpp0_dat.png");
 
     drawFitPlotsWithPulls(&m12_dat_hist, &m12_pdf_hist, plotdir);
     drawFitPlotsWithPulls(&m13_dat_hist, &m13_pdf_hist, plotdir);
@@ -769,93 +701,68 @@ void runToyFit(std::string toyFileName) {
     overallSignal->setData(data);
     signalDalitz->setDataSize(data->getNumEvents());
 
-    FitManager datapdf(overallSignal);
+    FitManager fitter(overallSignal);
+    fitter.setVerbosity(verbosity);
 
     for(int i = 0; i < HH_bin_limits.size(); i++) {
         pwa_coefs_amp[i].setFixed(false);
         pwa_coefs_phs[i].setFixed(false);
         // pwa_coefs_amp[i]->error = pwa_coefs_phs[i]->error = 1.0;
     }
-
-    gettimeofday(&startTime, NULL);
-    startCPU = times(&startProc);
-    datapdf.setVerbosity(verbosity);
-
+    
     // Maybe make optional? With a command line switch?
     if(fit)
-        datapdf.fit();
-    stopCPU = times(&stopProc);
-    gettimeofday(&stopTime, NULL);
+        fitter.fit();
 
     makeToyDalitzPdfPlots(overallSignal);
 }
 
 int main(int argc, char **argv) {
+    int fit_value = 0;
+    std::string name;
+    
     GooFit::Application app{"D2K3_toy", argc, argv};
     app.add_option("-v,--verbose", verbosity, "Set the verbosity (to 0 for example", true);
-
-    int fit_value;
-    std::string name = "dalitz_mytoyMC_000.txt";
+    app.add_option("-i,--int", fit_value, "A number to load", true);
+    app.add_option("-n,--name", name, "The filename to load")->excludes("--int");
+    
+    
 
     auto fit = app.add_subcommand("fit");
-    fit->add_option("-i,--int", fit_value, "A number to load");
-    auto name_opt = fit->add_option("-n,--name,name", name, "The filename to load", true)->excludes("--int");
-
+    
     int N;
     auto run = app.add_subcommand("run");
-    run->add_option("N", N, "")->required();
+    run->add_option("-N", N, "Number of runs")->required();
 
-    int value;
+    size_t events = 1000000;
     auto gen = app.add_subcommand("gen");
-    gen->add_option("value", value, "The number to generate")->required();
+    gen->add_option("-e,--events", events, "The number of events to generate", true);
 
-    app.require_subcommand(1);
+    /// Must get 1 or more subcommands
+    app.require_subcommand();
 
     GOOFIT_PARSE(app);
 
-    if(name_opt->count())
-        name = fmt::format("dalitz_mytoyMC_{0:3}.txt", fit_value);
+    if(name.empty())
+        name = fmt::format("dalitz_mytoyMC_{0:03}.txt", fit_value);
+    
+    /// Make the plot directory if it does not exist
+    std::string command = "mkdir -p plots";
+    if(system(command.c_str()) != 0)
+        throw GooFit::GeneralError("Making `plots` directory failed");
 
     GooFit::setROOTStyle();
-    
-//    gStyle->SetCanvasBorderMode(0);
-//    gStyle->SetCanvasColor(10);
-//    gStyle->SetFrameFillColor(10);
-//    gStyle->SetFrameBorderMode(0);
-//    gStyle->SetPadColor(0);
-//    gStyle->SetTitleColor(1);
-//    gStyle->SetStatColor(0);
-//    gStyle->SetFillColor(0);
-//    gStyle->SetFuncWidth(1);
-//    gStyle->SetLineWidth(1);
-//    gStyle->SetLineColor(1);
-//    gStyle->SetPalette(kViridis, 0);
-//    gStyle->SetNumberContours(512);
-//    gStyle->SetOptStat("RMe");
-    foo    = new TCanvas();
-    foodal = new TCanvas();
-    foodal->Size(10, 10);
 
+    if(*gen)
+        runToyGeneration(name, events);
     if(*fit)
         runToyFit(name);
-    if(*gen)
-        runToyGeneration(value);
     if(*run) {
         CLI::AutoTimer timer("Integration");
         runIntegration(N);
         std::cout << "\n\n";
     }
 
-    // Print total minimization time
-    double myCPU    = stopCPU - startCPU;
-    double totalCPU = myCPU;
-
-    timersub(&stopTime, &startTime, &totalTime);
-    std::cout << "Wallclock time  : " << totalTime.tv_sec + totalTime.tv_usec / 1000000.0 << " seconds." << std::endl;
-    std::cout << "CPU time: " << (myCPU / CLOCKS_PER_SEC) << std::endl;
-    std::cout << "Total CPU time: " << (totalCPU / CLOCKS_PER_SEC) << std::endl;
-    myCPU = stopProc.tms_utime - startProc.tms_utime;
-    std::cout << "Processor time: " << (myCPU / CLOCKS_PER_SEC) << std::endl;
-
+ 
     return 0;
 }
