@@ -4,6 +4,7 @@
 #include <TFile.h>
 #include <TH1F.h>
 #include <TH2F.h>
+#include <TGraph.h>
 #include <TLegend.h>
 #include <TLine.h>
 #include <TMath.h>
@@ -13,6 +14,9 @@
 #include <TText.h>
 #include <TTree.h>
 #include <TString.h>
+#include <TROOT.h>
+#include <TMinuit.h>
+
 
 // System stuff
 #include <CLI/Timer.hpp>
@@ -28,6 +32,7 @@
 #include <goofit/Application.h>
 #include <goofit/BinnedDataSet.h>
 #include <goofit/FitManager.h>
+#include <goofit/fitting/FitManagerMinuit2.h>
 #include <goofit/PDFs/GooPdf.h>
 #include <goofit/PDFs/basic/PolynomialPdf.h>
 #include <goofit/PDFs/basic/SmoothHistogramPdf.h>
@@ -42,8 +47,11 @@
 #include <goofit/detail/Style.h>
 #include <goofit/PDFs/physics/DalitzPlotter.h>
 
+#include <Minuit2/MnScan.h>
+
 using namespace std;
 using namespace GooFit;
+using namespace ROOT;
 
 UnbinnedDataSet *data    = 0;
 const unsigned int nbins = 1000;
@@ -55,7 +63,7 @@ TH2F *underlyingBins     = 0;
 const int NevG = 1e7;
 
 // PWA INPUT FILE NAME
-const string pwa_file = "files/PWA_COEFFS_50.txt";
+const string pwa_file = "PWA_COEFFS_50.txt";
 
 // FIT OR JUST PLOT?
 bool fit = true;
@@ -66,6 +74,7 @@ EventNumber eventNumber("eventNumber");
 bool fitMasses = false;
 Variable fixedPhiMass("phi_mass", 1.019461, 0.01, 0.7, 1.8);
 Variable fixedPhiWidth("phi_width", 0.004266, 0.001, 1e-5, 1e-1);
+
 
 const fptype _mDp      = 1.86962;
 const fptype KPlusMass = 0.493677;
@@ -80,7 +89,7 @@ const fptype D3Mass2 = D3Mass * D3Mass;
 const fptype MMass   = _mDp;
 const fptype MMass2  = MMass * MMass;
 
-// const fptype MMass2inv = 1./MMass2;
+
 
 // Constants used in more than one PDF component.
 Variable motherM("motherM", MMass);
@@ -156,7 +165,6 @@ void makeToyDalitzData(GooPdf *overallSignal, std::string name, size_t nTotal) {
     std::cout << "Entries generated: " << data->getNumEvents() << std::endl;
     TCanvas foo;
     foo.SetLogz(false);
-    //dalitzpp0_dat_hist.Rebin2D(10, 10);
     dalitzpp0_dat_hist.Draw("colz");
     dalitzpp0_dat_hist.SetStats(0);
     foo.SaveAs("plots/Dalitz_D2KKK_temp.png");
@@ -220,7 +228,7 @@ void getToyData(std::string toyFileName) {
         reader.open(toyFileName.c_str());
         std::string buffer;
 
-        while(reader) {
+        while(!reader.eof()) {
             reader >> eventNumber;
             reader >> m12;
             reader >> m13;
@@ -228,6 +236,7 @@ void getToyData(std::string toyFileName) {
 
             dalitzplot.Fill(m12.getValue(), m13.getValue());
         }
+		reader.close();
     }
 
     TCanvas foo;
@@ -346,6 +355,7 @@ vector<Variable> pwa_coefs_phs;
 
 ResonancePdf *loadPWAResonance(const string fname = pwa_file, bool fixAmp = false) {
     std::ifstream reader;
+	GOOFIT_INFO("LOADING FILE {}",fname);
     reader.open(fname.c_str());
     assert(reader.good());
     HH_bin_limits.clear();
@@ -407,7 +417,7 @@ DalitzPlotPdf *makeSignalPdf(GooPdf *eff, bool fixAmps) {
     ResonancePdf *phi
         = new Resonances::RBW("phi", phi_amp_real, phi_amp_imag, fixedPhiMass, fixedPhiWidth, 1, PAIR_12, true);
 
-    // f0(980)
+	// f0(980)
     Variable f0_amp_real("f0_amp_real", 12.341 * cos(-62.852 * (M_PI / 180)), 0.0001, -100, 100);
     Variable f0_amp_imag("f0_amp_imag", 12.341 * sin(-62.852 * (M_PI / 180)), 0.0001, -100, 100);
     Variable f0Mass("f0Mass", 0.965);
@@ -438,13 +448,14 @@ DalitzPlotPdf *makeSignalPdf(GooPdf *eff, bool fixAmps) {
     Variable nonr_amp_imag("nonr_amp_imag", 0.0, 0.001, -100, +100);
     ResonancePdf *nonr = new Resonances::NonRes("nonr", nonr_amp_real, nonr_amp_imag);
 
-    //ResonancePdf *swave_12 = loadPWAResonance(pwa_file, fixAmps);
+    ResonancePdf *swave_12 = loadPWAResonance(pwa_file, fixAmps);
 
     dtop0pp.resonances.push_back(phi);
-    // dtop0pp.resonances.push_back(swave_12);
-    // dtop0pp.resonances.push_back(f0X);
-    // dtop0pp.resonances.push_back(f0);
-    dtop0pp.resonances.push_back(nonr);
+    dtop0pp.resonances.push_back(swave_12);
+    //dtop0pp.resonances.push_back(f0X);
+    //dtop0pp.resonances.push_back(f0);
+    
+	dtop0pp.resonances.push_back(nonr);
 
     if(!eff) {
         // By default create a constant efficiency.
@@ -516,7 +527,7 @@ std::tuple<double, double> DalitzNorm(GooPdf *overallSignal, int N) {
     return std::make_tuple(integral, sigma);
 }
 
-void runIntegration(int N = 10000) {
+void runIntegration(int N = 10000,int Nint=100) {
     signalDalitz = makeSignalPdf(0, false);
 
     std::vector<PdfBase *> comps;
@@ -525,22 +536,22 @@ void runIntegration(int N = 10000) {
 
     ProdPdf *overallSignal = new ProdPdf("overallSignal", comps);
 
-    double arr[100];
-    double arr_error[100];
-    std::fill(arr, arr + 100, 0);
-    std::fill(arr_error, arr_error + 100, 0);
+    double arr[Nint];
+    double arr_error[Nint];
+    std::fill(arr, arr + Nint, 0);
+    std::fill(arr_error, arr_error + Nint, 0);
 
-    TH1D integral_hist("integral", "integral", 30, arr[0] * (0.95), arr[99] * (1.05));
+    TH1D integral_hist("integral", "integral", 30, arr[0] * (0.95), arr[Nint-1] * (1.05));
 
-    for(int i = 0; i < 100; i++) {
+    for(int i = 0; i < Nint; i++) {
         auto integral2 = DalitzNorm(overallSignal, N);
         arr[i]         = std::get<0>(integral2);
         arr_error[i]   = std::get<1>(integral2);
     }
 
-    std::sort(arr, arr + 100);
+    std::sort(arr, arr + Nint);
 
-    for(int l = 0; l < 100; l++) {
+    for(int l = 0; l < Nint; l++) {
         integral_hist.Fill(arr[l]);
     }
 
@@ -561,6 +572,9 @@ void runIntegration(int N = 10000) {
 
     std::cout << "<E>_{N_Integrations=1}: " << integral << '\t' << "<delta_E>: " << sigma2 << "\n\n";
     std::cout << "|stdDev - <delta_E>|= " << abs(integral_hist.GetStdDev() - sigma2) << "\n\n";
+
+	//delete integral_Canvas;
+	//delete integral_hist;
 }
 
 void drawFitPlotsWithPulls(TH1 *hd, TH1 *ht, string plotdir) {
@@ -575,14 +589,22 @@ void drawFitPlotsWithPulls(TH1 *hd, TH1 *ht, string plotdir) {
             break;
     }
     ht->Scale(hd->Integral() / ht->Integral());
-    
+	ht->SetLineColor(kRed);
+	
+	hd->SetMarkerColor(kBlack);
+	ht->SetMarkerColor(kRed);
+	ht->Rebin(5);
+	hd->Rebin(5);
+	    
+
     TCanvas foo;
     
-    ht->Draw("l");
-    hd->Draw("epsame");
+	hd->Draw("E");
+    ht->Draw("lsame");
+    
     
     foo.SaveAs(TString::Format("plots/%s_fit.png",obsname));
-    foo.SaveAs(TString::Format("plots/%s_fit.pdf",obsname));
+    //foo.SaveAs(TString::Format("plots/%s_fit.pdf",obsname));
 
 }
 
@@ -693,7 +715,8 @@ void runToyFit(std::string toyFileName) {
     getToyData(toyFileName);
 
     GOOFIT_INFO("Number of events in dataset: {}", data->getNumEvents());
-    
+	
+	
     signalDalitz = makeSignalPdf();
     comps.clear();
     comps.push_back(signalDalitz);
@@ -701,8 +724,9 @@ void runToyFit(std::string toyFileName) {
     overallSignal->setData(data);
     signalDalitz->setDataSize(data->getNumEvents());
 
-    FitManager fitter(overallSignal);
+    FitManagerMinuit2 fitter(overallSignal);
     fitter.setVerbosity(verbosity);
+
 
     for(int i = 0; i < HH_bin_limits.size(); i++) {
         pwa_coefs_amp[i].setFixed(false);
@@ -711,11 +735,21 @@ void runToyFit(std::string toyFileName) {
     }
     
     // Maybe make optional? With a command line switch?
-    if(fit)
-        fitter.fit();
+    auto func_min = fitter.fit();
 
+
+    auto fcn = fitter.getFCN();
+    auto upar = fitter.getParams();
+
+    /*int Npts = 40;
+    double xarr[Npts],chiarr[Npts];
+    auto scanner = func_min.Scan(upar[0],Npts,xarr,chiarr,0,0.20);
+    TGraph *g = new TGraph(Npts, xarr, chiarr);
+    TCanvas *C = new TCanvas(“C”, “C”, 600, 450);
+    C->cd(); g->Draw(“ca”);*/
     makeToyDalitzPdfPlots(overallSignal);
 }
+
 
 int main(int argc, char **argv) {
     int fit_value = 0;
@@ -724,17 +758,20 @@ int main(int argc, char **argv) {
     GooFit::Application app{"D2K3_toy", argc, argv};
     app.add_option("-v,--verbose", verbosity, "Set the verbosity (to 0 for example", true);
     app.add_option("-i,--int", fit_value, "A number to load", true);
+
     app.add_option("-n,--name", name, "The filename to load")->excludes("--int");
     
     
 
     auto fit = app.add_subcommand("fit");
     
-    int N;
+    int N,e;
     auto run = app.add_subcommand("run");
-    run->add_option("-N", N, "Number of runs")->required();
+    run->add_option("-e", e, "sample size")->required();
+	run->add_option("-N", N, "Number of integrations")->required();
 
     size_t events = 1000000;
+
     auto gen = app.add_subcommand("gen");
     gen->add_option("-e,--events", events, "The number of events to generate", true);
 
@@ -759,7 +796,7 @@ int main(int argc, char **argv) {
         runToyFit(name);
     if(*run) {
         CLI::AutoTimer timer("Integration");
-        runIntegration(N);
+        runIntegration(e,N);
         std::cout << "\n\n";
     }
 
