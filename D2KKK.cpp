@@ -12,7 +12,7 @@
 #include <TTree.h>
 #include <TROOT.h>
 #include <TMinuit.h>
-#include <TNtuple.h>
+
 
 // System stuff
 #include <CLI/Timer.hpp>
@@ -417,10 +417,9 @@ DalitzPlotPdf *makeSignalPdf(GooPdf *eff, bool fixAmps) {
 
     Variable f0X_amp_real("f0X_amp_real", 11.918 * cos(20.248 * (M_PI / 180)), 0.0001, -100, 100);
     Variable f0X_amp_imag("f0X_amp_imag", 11.918 * sin(20.248 * (M_PI / 180)), 0.0001, -100, 100);
-    Variable f0XMass("f0XMass", 1.41478);    //,   0.00001,    1.00, 3.00);
-    Variable f0XWidth("f0XWidth", 0.309491); //,   0.00001, 0.00005, 3.00);
-    //Variable f0XMass("f0XMass", 1.35);
-    //Variable f0XWidth("f0XWidth", 0.250);
+    Variable f0XMass("f0XMass", 1.41478);
+    Variable f0XWidth("f0XWidth", 0.309491);
+    ;
     ResonancePdf *f0X = new Resonances::RBW("f0X",
                                             f0X_amp_real,
                                             f0X_amp_imag,
@@ -439,9 +438,9 @@ DalitzPlotPdf *makeSignalPdf(GooPdf *eff, bool fixAmps) {
 
     dtop0pp.resonances.push_back(phi);
     //dtop0pp.resonances.push_back(swave_12);
-    //dtop0pp.resonances.push_back(f0X);
+    dtop0pp.resonances.push_back(f0X);
     dtop0pp.resonances.push_back(f0);
-	//dtop0pp.resonances.push_back(nonr);
+	dtop0pp.resonances.push_back(nonr);
 
     if(!eff) {
         // By default create a constant efficiency.
@@ -639,8 +638,7 @@ void makeToyDalitzPdfPlots(GooPdf *overallSignal, string plotdir = "plots") {
                             m13.getNumBins(),
                             m13.getLowerLimit(),
                             m13.getUpperLimit());
-    /*  dalitzpp0_pdf_hist.GetXaxis()->SetTitle("m^{2}(K^{-} #pi^{0}) [GeV^{2}]");
-        dalitzpp0_pdf_hist.GetYaxis()->SetTitle("m^{2}(K^{-} #pi^{+}) [GeV^{2}]");*/
+
     dalitzpp0_pdf_hist.GetXaxis()->SetTitle("m^{2}(K^{-} K^{+}) [GeV^{2}]");
     dalitzpp0_pdf_hist.GetYaxis()->SetTitle("m^{2}(K^{-} K^{+}) [GeV^{2}]");
     dalitzpp0_pdf_hist.SetStats(false);
@@ -706,7 +704,7 @@ void fit_fractions(DalitzPlotPdf* signal, std::vector<fpcomplex> coefs){
 
     size_t nEntries = signal->getCachedWave(0).size();
 
-    std::vector<fptype> cache_results;
+    fptype cache_results[n_res][n_res];
 
     fptype buffer_all = 0;
     fptype buffer =0 ;
@@ -716,18 +714,22 @@ void fit_fractions(DalitzPlotPdf* signal, std::vector<fpcomplex> coefs){
 
         for(size_t j = 0; j < n_res ; j++){
 
-           norm =0;
+            norm =0;
             buffer =0;
+
+
+            auto cached_i = signal->getCachedWave(i);
+            auto cached_j = signal->getCachedWave(j);
+            fpcomplex coef_i = coefs[i];
+            fpcomplex coef_j = coefs[j];
 
             for(size_t k = 0 ; k < nEntries ; k++){
 
-                auto cached_i = signal->getCachedWave(i);
-                auto cached_j = signal->getCachedWave(j);
+
                 fpcomplex cached_i_val = cached_i[k];
                 fpcomplex cached_j_val = cached_j[k];
 
-                fpcomplex coef_i = coefs[i];
-                fpcomplex coef_j = coefs[j];
+
 
                 if(i!=j) {
                     norm = (coef_i * conj<fptype>(coef_j) * cached_i_val * conj<fptype>(cached_j_val)).real();
@@ -737,33 +739,39 @@ void fit_fractions(DalitzPlotPdf* signal, std::vector<fpcomplex> coefs){
                     norm = thrust::norm(multiply);
                 }
 
-               buffer += norm;
+                buffer += norm;
+
+
             }
 
             buffer_all += buffer;
 
-            cache_results.push_back(buffer/nEntries);
+            cache_results[i][j] = (buffer/nEntries);
 
         }
+
+
 
     }
 
     double den = buffer_all/nEntries;
 
-    size_t n = 0;
+
     double sum = 0;
 
-    for(auto it = cache_results.begin(); it < cache_results.end(); it++){
+    std::cout << "nEntries= " << nEntries << '\n';
+    for(size_t i = 0; i < n_res ; i++){
 
-        std::cout << "FF[" << n << "]= " << *it/den << std::endl;
-        sum+=*it;
+        for(size_t j = 0; j< n_res ; j++){
+            std::cout << "FF[" << i << "," << j <<"]= " << cache_results[i][j]/den << std::endl;
 
-        n++;
+        }
+
+        sum+=cache_results[i][i]/den;
     }
 
-    std::cout << "Sum= " << sum << std::endl;
+    std::cout << "Sum[i,i]= " << sum << std::endl;
 }
-
 
 void runToyFit(std::string toyFileName) {
     m12.setNumBins(nbins);
@@ -771,8 +779,8 @@ void runToyFit(std::string toyFileName) {
     getToyData(toyFileName);
 
     GOOFIT_INFO("Number of events in dataset: {}", data->getNumEvents());
-	
-	
+
+
     signalDalitz = makeSignalPdf();
     comps.clear();
     comps.push_back(signalDalitz);
@@ -781,6 +789,7 @@ void runToyFit(std::string toyFileName) {
     signalDalitz->setDataSize(data->getNumEvents());
 
     FitManagerMinuit2 fitter(overallSignal);
+
     fitter.setVerbosity(verbosity);
 
 
@@ -789,73 +798,23 @@ void runToyFit(std::string toyFileName) {
         pwa_coefs_phs[i].setFixed(false);
         // pwa_coefs_amp[i]->error = pwa_coefs_phs[i]->error = 1.0;
     }
-    
+
     // Maybe make optional? With a command line switch?
     auto func_min = fitter.fit();
     makeToyDalitzPdfPlots(overallSignal);
 
     auto param = fitter.getParams()->Parameters();
 
-
-    fpcomplex f0_coef(param[2].Value()*cos(param[3].Value()), param[2].Value()*sin(param[3].Value()));
-    fpcomplex phi_coef(1.0,0.0);
-    std::vector<fpcomplex> coefs = {phi_coef,f0_coef};
+    fpcomplex phi_coef(param[0].Value()*cos(param[1].Value()), param[0].Value()*sin(param[1].Value()));
+    fpcomplex f0X_coef(param[2].Value()*cos(param[3].Value()), param[2].Value()*sin(param[3].Value()));
+    fpcomplex f0_coef(param[4].Value()*cos(param[5].Value()), param[4].Value()*sin(param[5].Value()));
+    fpcomplex NR_coef(param[6].Value()*cos(param[7].Value()), param[6].Value()*sin(param[7].Value()));
+    std::vector<fpcomplex> coefs = {phi_coef,f0X_coef,f0_coef,NR_coef};
 
     fit_fractions(signalDalitz,coefs);
 
-    /*auto phi = signalDalitz->getCachedWave(0);
-    auto f0 = signalDalitz->getCachedWave(1);
 
-    double buffer_phi = 0;
-    double buffer_f0 = 0;
-    double buffer_all = 0;
-    double buffer_all2=0;
 
-    for(auto it = f0.begin(); it<f0.end(); it++) {
-
-        double norm_f0 =0;
-        fpcomplex cached_f0 = *it;
-        fpcomplex multiply = cached_f0*f0_coef;
-        norm_f0 = thrust::norm(multiply);
-        buffer_f0+=norm_f0;
-
-    }
-
-    for(auto it = phi.begin(); it<phi.end(); it++) {
-
-        double norm_phi =0;
-        fpcomplex cached_phi = *it;
-        fpcomplex multiply = cached_phi*phi_coef;
-        norm_phi = thrust::norm(multiply);
-        buffer_phi+=norm_phi;
-
-    }
-
-    for(size_t it=0; it<phi.size();it++){
-
-        double norm_all = 0;
-        fpcomplex cached_phi = phi[it];
-        fpcomplex cached_f0 = f0[it];
-        double multiply = (phi_coef*conj<fptype>(f0_coef)*cached_phi*conj<fptype>(cached_f0)).real();
-        norm_all = multiply;
-        buffer_all+= norm_all;
-
-    }
-
-    cout << "nEvents = " << phi.size()<< endl;
-
-    double integral_phi = buffer_phi/phi.size();
-    double integral_f0 = buffer_f0/phi.size();
-    double integral_all = (buffer_phi + buffer_f0 + 2*buffer_all)/phi.size();
-    double Phi_FF = integral_phi/integral_all;
-    double f0_FF = integral_f0/integral_all;
-
-    cout << "integral_phi= " << integral_phi << endl;
-    cout << "integral_f0= " << integral_f0 << endl;
-    cout << "integral_all= " << integral_all << endl;
-    cout << "Phi_FF= " << Phi_FF << endl;
-    cout << "f0_FF= " << f0_FF << endl;
-    cout << "Sum= "  << Phi_FF + f0_FF << endl;*/
 
 }
 
