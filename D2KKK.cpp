@@ -6,27 +6,19 @@
 #include <TH2F.h>
 #include <TGraph.h>
 #include <TLegend.h>
-#include <TLine.h>
 #include <TMath.h>
 #include <TRandom.h>
 #include <TRandom3.h>
-#include <TStyle.h>
-#include <TText.h>
 #include <TTree.h>
-#include <TString.h>
 #include <TROOT.h>
 #include <TMinuit.h>
-
+#include <TNtuple.h>
 
 // System stuff
 #include <CLI/Timer.hpp>
-#include <algorithm>
 #include <fstream>
-#include <iostream>
-#include <math.h>
-#include <random>
-#include <stdio.h>
-#include <tuple>
+
+
 
 // GooFit stuff
 #include <goofit/Application.h>
@@ -53,17 +45,17 @@ using namespace std;
 using namespace GooFit;
 using namespace ROOT;
 
-UnbinnedDataSet *data    = 0;
+UnbinnedDataSet *data    = nullptr;
 const unsigned int nbins = 1000;
-TH2F *weightHistogram    = 0;
-TH2F *bkgHistogram       = 0;
-TH2F *underlyingBins     = 0;
+TH2F *weightHistogram    = nullptr;
+TH2F *bkgHistogram       = nullptr;
+TH2F *underlyingBins     = nullptr;
 
 // How many events will be generated for Eff Bkg?
-const int NevG = 1e7;
+const double NevG = 1e7;
 
 // PWA INPUT FILE NAME
-const string pwa_file = "PWA_COEFFS_50.txt";
+const string pwa_file = "files/PWA_COEFFS_50.txt";
 
 // FIT OR JUST PLOT?
 bool fit = true;
@@ -72,8 +64,7 @@ Observable m12("m12", 0.9, 2.0);
 Observable m13("m13", 0.9, 2.0);
 EventNumber eventNumber("eventNumber");
 bool fitMasses = false;
-Variable fixedPhiMass("phi_mass", 1.019461, 0.01, 0.7, 1.8);
-Variable fixedPhiWidth("phi_width", 0.004266, 0.001, 1e-5, 1e-1);
+
 
 
 const fptype _mDp      = 1.86962;
@@ -93,9 +84,6 @@ const fptype MMass2  = MMass * MMass;
 
 // Constants used in more than one PDF component.
 Variable motherM("motherM", MMass);
-Variable dau1M("dau1M", D1Mass);
-Variable dau2M("dau2M", D2Mass);
-Variable dau3M("dau3M", D3Mass);
 Variable massSum("massSum", MMass2 + D1Mass2 + D2Mass2 + D3Mass2); // = 3.53481
 Variable constantOne("constantOne", 1);
 Variable constantZero("constantZero", 0);
@@ -105,7 +93,7 @@ std::vector<PdfBase *> comps;
 // I don't like Globals! Henry
 int verbosity = 3;
 
-GooPdf *kzero_veto = 0;
+GooPdf *kzero_veto = nullptr;
 double mesonRad = 1.5;
 DalitzPlotPdf *signalDalitz;
 bool doEffSwap   = true;
@@ -122,7 +110,8 @@ fptype cpuGetM23(fptype massPZ, fptype massPM) { return (massSum.getValue() - ma
 void makeToyDalitzData(GooPdf *overallSignal, std::string name, size_t nTotal) {
     
     DalitzPlotter dp(overallSignal, signalDalitz);
-    
+
+
     // Generate data
     data = new UnbinnedDataSet({m12, m13, eventNumber});
     
@@ -170,6 +159,7 @@ void makeToyDalitzData(GooPdf *overallSignal, std::string name, size_t nTotal) {
     foo.SaveAs("plots/Dalitz_D2KKK_temp.png");
 }
 
+
 void runToyGeneration(std::string name, size_t events) {
     m12.setNumBins(1500);
     m13.setNumBins(1500);
@@ -183,6 +173,7 @@ void runToyGeneration(std::string name, size_t events) {
         CLI::AutoTimer timer{"makeToyDalitzData"};
         makeToyDalitzData(overallSignal, name, events);
     }
+
 }
 
 void getToyData(std::string toyFileName) {
@@ -204,16 +195,15 @@ void getToyData(std::string toyFileName) {
         
         TFile *f = TFile::Open(toyFileName.c_str());
         TTree *t = (TTree *)f->Get("DecayTree");
-        // TTree*t = (TTree*)f->Get("newTree");
+
         std::cout << "Entries: " << t->GetEntries() << std::endl;
         assert(t);
         double m2_12, m2_13;
-        // t->SetBranchAddress("s12_KK_DTF", &m2_12);
-        // t->SetBranchAddress("s13_KK_DTF", &m2_13);
+
         t->SetBranchAddress("s12", &m2_12);
         t->SetBranchAddress("s13", &m2_13);
-        for(int i = 0; i < t->GetEntries() /*&&i<MAXEVT*/; i++) {
-            // for (int i=0;i<100000;i++){
+        for(int i = 0; i < t->GetEntries(); i++) {
+
             t->GetEntry(i);
             m12.setValue(m2_12);
             m13.setValue(m2_13);
@@ -228,13 +218,18 @@ void getToyData(std::string toyFileName) {
         reader.open(toyFileName.c_str());
         std::string buffer;
 
+        size_t n = 0;
+
         while(!reader.eof()) {
             reader >> eventNumber;
+            //eventNumber = n;
             reader >> m12;
             reader >> m13;
             data->addEvent();
 
             dalitzplot.Fill(m12.getValue(), m13.getValue());
+
+            n++;
         }
 		reader.close();
     }
@@ -245,20 +240,6 @@ void getToyData(std::string toyFileName) {
     foo.SaveAs("plots/dalitzplot_D2KKK_gen.png");
 }
 
-/*GooPdf* makeKzeroVeto () {
-    if (kzero_veto) return kzero_veto;
-
-
-    Variable minimum("veto_min",0.475*0.475);
-    Variable maximum("veto_max", 0.505*0.505);
-    VetoInfo kVetoInfo(minimum,maximum,PAIR_23);
-
-    vector<VetoInfo> vetos; vetos.push_back(kVetoInfo);
-        kzero_veto = new DalitzVetoPdf("kzero_veto", m12, m13, motherM, dau1M, dau2M, dau3M, vetos);
-
-
-    return kzero_veto;
-}*/
 
 void createWeightHistogram() {
     TFile *f        = TFile::Open("Fit_Input/effspline300.root");
@@ -353,6 +334,7 @@ vector<fptype> HH_bin_limits;
 vector<Variable> pwa_coefs_amp;
 vector<Variable> pwa_coefs_phs;
 
+
 ResonancePdf *loadPWAResonance(const string fname = pwa_file, bool fixAmp = false) {
     std::ifstream reader;
 	GOOFIT_INFO("LOADING FILE {}",fname);
@@ -409,6 +391,9 @@ DalitzPlotPdf *makeSignalPdf(GooPdf *eff, bool fixAmps) {
     dtop0pp.meson_radius = 1.5;
 
     // phi
+
+	Variable fixedPhiMass("phi_mass", 1.019461, 0.01, 0.7, 1.8);
+	Variable fixedPhiWidth("phi_width", 0.004266, 0.001, 1e-5, 1e-1);
     Variable phi_amp_real("phi_amp_real", 1);
     Variable phi_amp_imag("phi_amp_imag", 0);
     fixedPhiMass.setFixed(true);
@@ -417,15 +402,16 @@ DalitzPlotPdf *makeSignalPdf(GooPdf *eff, bool fixAmps) {
     ResonancePdf *phi
         = new Resonances::RBW("phi", phi_amp_real, phi_amp_imag, fixedPhiMass, fixedPhiWidth, 1, PAIR_12, true);
 
-	// f0(980)
-    Variable f0_amp_real("f0_amp_real", 12.341 * cos(-62.852 * (M_PI / 180)), 0.0001, -100, 100);
-    Variable f0_amp_imag("f0_amp_imag", 12.341 * sin(-62.852 * (M_PI / 180)), 0.0001, -100, 100);
+    // f0
+
+	Variable f0_amp_real("f0_amp_real", 12.341 * cos(-62.852 * (M_PI / 180)), 0.0001, -100, 100);
+	Variable f0_amp_imag("f0_amp_imag", 12.341 * sin(-62.852 * (M_PI / 180)), 0.0001, -100, 100);
     Variable f0Mass("f0Mass", 0.965);
     Variable f0g1("f0g1", 0.165);
-    Variable rg1og2("rg1og2", 4.21); //,1.0,5.0);
+    Variable rg1og2("rg1og2", 4.21*0.165);
 
-    ResonancePdf *f0 = new Resonances::FLATTE(
-        "f0", f0_amp_real, f0_amp_imag, f0Mass, f0g1, rg1og2, PAIR_12, true); // Required to be symmetric
+    ResonancePdf *f0
+            = new Resonances::FLATTE("f0", f0_amp_real, f0_amp_imag, f0Mass, f0g1, rg1og2, PAIR_12, true); // Required to be symmetric
 
     // f0(X)
 
@@ -433,7 +419,8 @@ DalitzPlotPdf *makeSignalPdf(GooPdf *eff, bool fixAmps) {
     Variable f0X_amp_imag("f0X_amp_imag", 11.918 * sin(20.248 * (M_PI / 180)), 0.0001, -100, 100);
     Variable f0XMass("f0XMass", 1.41478);    //,   0.00001,    1.00, 3.00);
     Variable f0XWidth("f0XWidth", 0.309491); //,   0.00001, 0.00005, 3.00);
-
+    //Variable f0XMass("f0XMass", 1.35);
+    //Variable f0XWidth("f0XWidth", 0.250);
     ResonancePdf *f0X = new Resonances::RBW("f0X",
                                             f0X_amp_real,
                                             f0X_amp_imag,
@@ -451,11 +438,10 @@ DalitzPlotPdf *makeSignalPdf(GooPdf *eff, bool fixAmps) {
     ResonancePdf *swave_12 = loadPWAResonance(pwa_file, fixAmps);
 
     dtop0pp.resonances.push_back(phi);
-    dtop0pp.resonances.push_back(swave_12);
+    //dtop0pp.resonances.push_back(swave_12);
     //dtop0pp.resonances.push_back(f0X);
-    //dtop0pp.resonances.push_back(f0);
-    
-	dtop0pp.resonances.push_back(nonr);
+    dtop0pp.resonances.push_back(f0);
+	//dtop0pp.resonances.push_back(nonr);
 
     if(!eff) {
         // By default create a constant efficiency.
@@ -500,17 +486,22 @@ std::tuple<double, double> DalitzNorm(GooPdf *overallSignal, int N) {
         }
     }
 
+    //overallSignal->normalize();
     overallSignal->setData(&data);
     signalDalitz->setDataSize(data.getNumEvents());
     std::vector<std::vector<double>> pdfValues = overallSignal->getCompProbsAtDataPoints();
 
     double buffer = 0;
 
+    ofstream wr("res.txt");
     // cout<< "Sample Size = " << pdfValues[0].size() << endl;
-
     for(int k = 0; k < pdfValues[0].size(); k++) {
         buffer += pdfValues[0][k];
+
+        wr <<  pdfValues[0][k] << '\t' << pdfValues[1][k] << '\n';
     }
+
+    wr.close();
 
     double mean = buffer / N;
     double diff = 0;
@@ -527,9 +518,10 @@ std::tuple<double, double> DalitzNorm(GooPdf *overallSignal, int N) {
     return std::make_tuple(integral, sigma);
 }
 
+
+
 void runIntegration(int N = 10000,int Nint=100) {
     signalDalitz = makeSignalPdf(0, false);
-
     std::vector<PdfBase *> comps;
     comps.clear();
     comps.push_back(signalDalitz);
@@ -588,19 +580,18 @@ void drawFitPlotsWithPulls(TH1 *hd, TH1 *ht, string plotdir) {
         if(obsname[i] == '\0')
             break;
     }
-    ht->Scale(hd->Integral() / ht->Integral());
+    ht->Scale(hd->Integral() / ht->Integral()*5);
 	ht->SetLineColor(kRed);
-	
+    ht->SetMarkerStyle(0);
+
 	hd->SetMarkerColor(kBlack);
-	ht->SetMarkerColor(kRed);
-	ht->Rebin(5);
 	hd->Rebin(5);
-	    
+
 
     TCanvas foo;
     
 	hd->Draw("E");
-    ht->Draw("lsame");
+    ht->Draw("HIST C same");
     
     
     foo.SaveAs(TString::Format("plots/%s_fit.png",obsname));
@@ -709,6 +700,71 @@ void makeToyDalitzPdfPlots(GooPdf *overallSignal, string plotdir = "plots") {
     drawFitPlotsWithPulls(&m23_dat_hist, &m23_pdf_hist, plotdir);
 }
 
+void fit_fractions(DalitzPlotPdf* signal, std::vector<fpcomplex> coefs){
+
+    size_t n_res = signal->getDecayInfo().resonances.size();
+
+    size_t nEntries = signal->getCachedWave(0).size();
+
+    std::vector<fptype> cache_results;
+
+    fptype buffer_all = 0;
+    fptype buffer =0 ;
+    double norm = 0;
+
+    for(size_t i = 0; i < n_res ; i++){
+
+        for(size_t j = 0; j < n_res ; j++){
+
+           norm =0;
+            buffer =0;
+
+            for(size_t k = 0 ; k < nEntries ; k++){
+
+                auto cached_i = signal->getCachedWave(i);
+                auto cached_j = signal->getCachedWave(j);
+                fpcomplex cached_i_val = cached_i[k];
+                fpcomplex cached_j_val = cached_j[k];
+
+                fpcomplex coef_i = coefs[i];
+                fpcomplex coef_j = coefs[j];
+
+                if(i!=j) {
+                    norm = (coef_i * conj<fptype>(coef_j) * cached_i_val * conj<fptype>(cached_j_val)).real();
+                }
+                else {
+                    fpcomplex multiply = coef_i * conj<fptype>(coef_j) * cached_i_val * conj<fptype>(cached_j_val);
+                    norm = thrust::norm(multiply);
+                }
+
+               buffer += norm;
+            }
+
+            buffer_all += buffer;
+
+            cache_results.push_back(buffer/nEntries);
+
+        }
+
+    }
+
+    double den = buffer_all/nEntries;
+
+    size_t n = 0;
+    double sum = 0;
+
+    for(auto it = cache_results.begin(); it < cache_results.end(); it++){
+
+        std::cout << "FF[" << n << "]= " << *it/den << std::endl;
+        sum+=*it;
+
+        n++;
+    }
+
+    std::cout << "Sum= " << sum << std::endl;
+}
+
+
 void runToyFit(std::string toyFileName) {
     m12.setNumBins(nbins);
     m13.setNumBins(nbins);
@@ -736,19 +792,73 @@ void runToyFit(std::string toyFileName) {
     
     // Maybe make optional? With a command line switch?
     auto func_min = fitter.fit();
-
-
-    auto fcn = fitter.getFCN();
-    auto upar = fitter.getParams();
-
-    /*int Npts = 40;
-    double xarr[Npts],chiarr[Npts];
-    auto scanner = func_min.Scan(upar[0],Npts,xarr,chiarr,0,0.20);
-    TGraph *g = new TGraph(Npts, xarr, chiarr);
-    TCanvas *C = new TCanvas(“C”, “C”, 600, 450);
-    C->cd(); g->Draw(“ca”);*/
     makeToyDalitzPdfPlots(overallSignal);
+
+    auto param = fitter.getParams()->Parameters();
+
+
+    fpcomplex f0_coef(param[2].Value()*cos(param[3].Value()), param[2].Value()*sin(param[3].Value()));
+    fpcomplex phi_coef(1.0,0.0);
+    std::vector<fpcomplex> coefs = {phi_coef,f0_coef};
+
+    fit_fractions(signalDalitz,coefs);
+
+    /*auto phi = signalDalitz->getCachedWave(0);
+    auto f0 = signalDalitz->getCachedWave(1);
+
+    double buffer_phi = 0;
+    double buffer_f0 = 0;
+    double buffer_all = 0;
+    double buffer_all2=0;
+
+    for(auto it = f0.begin(); it<f0.end(); it++) {
+
+        double norm_f0 =0;
+        fpcomplex cached_f0 = *it;
+        fpcomplex multiply = cached_f0*f0_coef;
+        norm_f0 = thrust::norm(multiply);
+        buffer_f0+=norm_f0;
+
+    }
+
+    for(auto it = phi.begin(); it<phi.end(); it++) {
+
+        double norm_phi =0;
+        fpcomplex cached_phi = *it;
+        fpcomplex multiply = cached_phi*phi_coef;
+        norm_phi = thrust::norm(multiply);
+        buffer_phi+=norm_phi;
+
+    }
+
+    for(size_t it=0; it<phi.size();it++){
+
+        double norm_all = 0;
+        fpcomplex cached_phi = phi[it];
+        fpcomplex cached_f0 = f0[it];
+        double multiply = (phi_coef*conj<fptype>(f0_coef)*cached_phi*conj<fptype>(cached_f0)).real();
+        norm_all = multiply;
+        buffer_all+= norm_all;
+
+    }
+
+    cout << "nEvents = " << phi.size()<< endl;
+
+    double integral_phi = buffer_phi/phi.size();
+    double integral_f0 = buffer_f0/phi.size();
+    double integral_all = (buffer_phi + buffer_f0 + 2*buffer_all)/phi.size();
+    double Phi_FF = integral_phi/integral_all;
+    double f0_FF = integral_f0/integral_all;
+
+    cout << "integral_phi= " << integral_phi << endl;
+    cout << "integral_f0= " << integral_f0 << endl;
+    cout << "integral_all= " << integral_all << endl;
+    cout << "Phi_FF= " << Phi_FF << endl;
+    cout << "f0_FF= " << f0_FF << endl;
+    cout << "Sum= "  << Phi_FF + f0_FF << endl;*/
+
 }
+
 
 
 int main(int argc, char **argv) {
