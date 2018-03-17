@@ -40,6 +40,7 @@
 #include <goofit/PDFs/physics/DalitzPlotter.h>
 
 #include <Minuit2/MnScan.h>
+#include <TNtuple.h>
 
 using namespace std;
 using namespace GooFit;
@@ -95,17 +96,23 @@ int verbosity = 3;
 
 GooPdf *kzero_veto = nullptr;
 double mesonRad = 1.5;
+
 DalitzPlotPdf *signalDalitz;
+
 bool doEffSwap   = true;
 bool saveEffPlot = true;
 bool saveBkgPlot = true;
+
+vector<fptype> HH_bin_limits;
+vector<Variable> pwa_coefs_amp;
+vector<Variable> pwa_coefs_phs;
 
 
 // Declarations for (some of) the functions
 
 DalitzPlotPdf *makeSignalPdf(GooPdf *eff = 0, bool fixAmps = false);
-fptype cpuGetM23(fptype massPZ, fptype massPM) { return (massSum.getValue() - massPZ - massPM); }
 
+fptype cpuGetM23(fptype massPZ, fptype massPM) { return (massSum.getValue() - massPZ - massPM); }
 
 void makeToyDalitzData(GooPdf *overallSignal, std::string name, size_t nTotal) {
     
@@ -158,7 +165,6 @@ void makeToyDalitzData(GooPdf *overallSignal, std::string name, size_t nTotal) {
     dalitzpp0_dat_hist.SetStats(0);
     foo.SaveAs("plots/Dalitz_D2KKK_temp.png");
 }
-
 
 void runToyGeneration(std::string name, size_t events) {
     m12.setNumBins(1500);
@@ -239,7 +245,6 @@ void getToyData(std::string toyFileName) {
     dalitzplot.Draw("colz");
     foo.SaveAs("plots/dalitzplot_D2KKK_gen.png");
 }
-
 
 void createWeightHistogram() {
     TFile *f        = TFile::Open("Fit_Input/effspline300.root");
@@ -329,11 +334,6 @@ GooPdf *makeBackgroundPdf() {
     SmoothHistogramPdf *ret = new SmoothHistogramPdf("efficiency", binBkgData, *effSmoothing);
     return ret;
 }
-
-vector<fptype> HH_bin_limits;
-vector<Variable> pwa_coefs_amp;
-vector<Variable> pwa_coefs_phs;
-
 
 ResonancePdf *loadPWAResonance(const string fname = pwa_file, bool fixAmp = false) {
     std::ifstream reader;
@@ -517,8 +517,6 @@ std::tuple<double, double> DalitzNorm(GooPdf *overallSignal, int N) {
     return std::make_tuple(integral, sigma);
 }
 
-
-
 void runIntegration(int N = 10000,int Nint=100) {
     signalDalitz = makeSignalPdf(0, false);
     std::vector<PdfBase *> comps;
@@ -581,6 +579,7 @@ void drawFitPlotsWithPulls(TH1 *hd, TH1 *ht, string plotdir) {
     }
     ht->Scale(hd->Integral() / ht->Integral()*5);
 	ht->SetLineColor(kRed);
+    ht->SetLineWidth(3);
     ht->SetMarkerStyle(0);
 
 	hd->SetMarkerColor(kBlack);
@@ -594,7 +593,7 @@ void drawFitPlotsWithPulls(TH1 *hd, TH1 *ht, string plotdir) {
     
     
     foo.SaveAs(TString::Format("plots/%s_fit.png",obsname));
-    //foo.SaveAs(TString::Format("plots/%s_fit.pdf",obsname));
+
 
 }
 
@@ -698,7 +697,9 @@ void makeToyDalitzPdfPlots(GooPdf *overallSignal, string plotdir = "plots") {
     drawFitPlotsWithPulls(&m23_dat_hist, &m23_pdf_hist, plotdir);
 }
 
-void fit_fractions(DalitzPlotPdf* signal, std::vector<fpcomplex> coefs){
+
+
+std::vector<std::vector<fptype>> fit_fractions(DalitzPlotPdf* signal, std::vector<fpcomplex> coefs){
 
     size_t n_res = signal->getDecayInfo().resonances.size();
 
@@ -755,22 +756,42 @@ void fit_fractions(DalitzPlotPdf* signal, std::vector<fpcomplex> coefs){
     }
 
     double den = buffer_all/nEntries;
+    std::vector<vector<fptype>>  ff(n_res,std::vector<fptype>(n_res));
 
 
-    double sum = 0;
+    for(size_t i = 0; i < n_res ; i++){
+
+        for(size_t j = 0; j< n_res ; j++){
+
+            ff[i][j] = (cache_results[i][j]/den);
+        }
+
+    }
+
+    return ff;
+
+}
+
+void PrintFF(std::vector<std::vector<fptype>> ff){
+
+    size_t nEntries = signalDalitz->getCachedWave(0).size();
+    size_t n_res = signalDalitz->getDecayInfo().resonances.size();
+    fptype sum = 0;
 
     std::cout << "nEntries= " << nEntries << '\n';
     for(size_t i = 0; i < n_res ; i++){
 
         for(size_t j = 0; j< n_res ; j++){
-            std::cout << "FF[" << i << "," << j <<"]= " << cache_results[i][j]/den << std::endl;
+            std::cout << "FF[" << i << "," << j <<"]= " << ff[i][j] << std::endl;
 
         }
 
-        sum+=cache_results[i][i]/den;
+        sum+=ff[i][i];
     }
 
     std::cout << "Sum[i,i]= " << sum << std::endl;
+
+
 }
 
 void runToyFit(std::string toyFileName) {
@@ -787,6 +808,8 @@ void runToyFit(std::string toyFileName) {
     ProdPdf *overallSignal = new ProdPdf("overallSignal", comps);
     overallSignal->setData(data);
     signalDalitz->setDataSize(data->getNumEvents());
+
+
 
     FitManagerMinuit2 fitter(overallSignal);
 
@@ -811,14 +834,14 @@ void runToyFit(std::string toyFileName) {
     fpcomplex NR_coef(param[6].Value()*cos(param[7].Value()), param[6].Value()*sin(param[7].Value()));
     std::vector<fpcomplex> coefs = {phi_coef,f0X_coef,f0_coef,NR_coef};
 
-    fit_fractions(signalDalitz,coefs);
+    auto ff = fit_fractions(signalDalitz,coefs);
 
+    PrintFF(ff);
 
+    plotComps(signalDalitz,coefs);
 
 
 }
-
-
 
 int main(int argc, char **argv) {
     int fit_value = 0;
