@@ -838,7 +838,7 @@ void runToyFit(std::string toyFileName) {
 
     PrintFF(ff);
 
-    plotComps(signalDalitz,coefs);
+    //plotComps(signalDalitz,coefs);
 
 
 }
