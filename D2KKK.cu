@@ -64,14 +64,8 @@ const string pwa_file = "files/PWA_COEFFS_50.txt";
 // FIT OR JUST PLOT?
 bool fit = true;
 
-Observable m12("m12", 0.9, 2.0);
-Observable m13("m13", 0.9, 2.0);
-EventNumber eventNumber("eventNumber");
-bool fitMasses = false;
-
-
-
-const fptype _mDp      = 1.86962; //D mass
+//const fptype _mDp      = 1.86962; //D mass
+const fptype _mDp      = 5.27932;
 const fptype KPlusMass = 0.493677; //K^{+/-} mass
 
 const fptype D1Mass  = KPlusMass; //Daughter 1 Mass K^{-}
@@ -84,6 +78,11 @@ const fptype D3Mass2 = D3Mass * D3Mass;
 const fptype MMass   = _mDp; //Mother Mass
 const fptype MMass2  = MMass * MMass;
 
+Observable m12("m12", pow(D1Mass  + D2Mass,2), pow(_mDp - D2Mass,2));
+Observable m13("m13", pow(D1Mass  + D2Mass,2), pow(_mDp - D2Mass,2));
+
+EventNumber eventNumber("eventNumber");
+bool fitMasses = false;
 
 
 // Constants used in more than one PDF component
@@ -586,7 +585,7 @@ void drawFitPlotsWithPulls(TH1 *hd, TH1 *ht, string plotdir) {
 
 }
 
-/*
+
 void makeToyDalitzPdfPlots(GooPdf *overallSignal, string plotdir = "plots") {
     TH1F m12_dat_hist("m12_dat_hist", "", m12.getNumBins(), m12.getLowerLimit(), m12.getUpperLimit());
     m12_dat_hist.GetXaxis()->SetTitle("m^{2}(K^{-} K^{+}) [GeV]");
@@ -686,7 +685,7 @@ void makeToyDalitzPdfPlots(GooPdf *overallSignal, string plotdir = "plots") {
     drawFitPlotsWithPulls(&m13_dat_hist, &m13_pdf_hist, plotdir);
     drawFitPlotsWithPulls(&m23_dat_hist, &m23_pdf_hist, plotdir);
 }
-*/
+
 
 
 
@@ -835,7 +834,7 @@ void runToyFit(std::string toyFileName,size_t nbins) {
     }
 
     auto func_min = fitter.fit(); //Minimizer
-    //makeToyDalitzPdfPlots(overallSignal);
+    makeToyDalitzPdfPlots(overallSignal);
 
     auto param = fitter.getParams()->Parameters();
 
