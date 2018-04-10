@@ -1,6 +1,7 @@
+cmake_minimum_required(VERSION 3.8)
+
 goofit_add_directory()
 
-#goofit_add_executable(D2K3_toy D2K3_toy.cu)
 goofit_add_executable(D2KKK D2KKK.cu)
 
 ## Add Meerkat
@@ -26,4 +27,6 @@ endif()
 
 target_link_libraries(D2KKK PUBLIC MeerkatInt)
 
-target_compile_options(D2KKK PUBLIC --expt-extended-lambda)
+if(GOOFIT_DEVICE STREQUAL CUDA)
+    target_compile_options(D2KKK PUBLIC --expt-extended-lambda)
+endif()
