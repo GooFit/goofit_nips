@@ -64,8 +64,8 @@ const string pwa_file = "files/PWA_COEFFS_50.txt";
 // FIT OR JUST PLOT?
 bool fit = true;
 
-//const fptype _mDp      = 1.86962; //D mass
-const fptype _mDp      = 5.27932;
+const fptype _mDp      = 1.86962; //D mass
+//const fptype _mDp      = 5.27932;
 const fptype KPlusMass = 0.493677; //K^{+/-} mass
 
 const fptype D1Mass  = KPlusMass; //Daughter 1 Mass K^{-}
@@ -78,8 +78,14 @@ const fptype D3Mass2 = D3Mass * D3Mass;
 const fptype MMass   = _mDp; //Mother Mass
 const fptype MMass2  = MMass * MMass;
 
-Observable m12("m12", pow(D1Mass  + D2Mass,2), pow(_mDp - D2Mass,2));
-Observable m13("m13", pow(D1Mass  + D2Mass,2), pow(_mDp - D2Mass,2));
+fptype m12_min = pow(D1Mass  + D2Mass,2);
+fptype m12_max = pow(_mDp - D2Mass,2);
+fptype m13_min = pow(D1Mass  + D3Mass,2);
+fptype m13_max = pow(_mDp - D3Mass,2);
+
+
+Observable m12("m12", m12_min, m12_max);
+Observable m13("m13", m13_min, m13_max);
 
 EventNumber eventNumber("eventNumber");
 bool fitMasses = false;
@@ -455,7 +461,7 @@ DalitzPlotPdf *makeSignalPdf(GooPdf *eff, bool fixAmps) {
 std::tuple<double, double> DalitzNorm(GooPdf *overallSignal, int N) { //Brute Force integration, expected integral value = 1.0
     random_device rd;
     mt19937 mt(rd());
-    uniform_real_distribution<double> xyvalues(0.9, 2.0);
+    uniform_real_distribution<double> xyvalues(m12.getLowerLimit(), m12.getUpperLimit());
 
     std::vector<Observable> vars;
     vars.push_back(m12);
@@ -488,7 +494,7 @@ std::tuple<double, double> DalitzNorm(GooPdf *overallSignal, int N) { //Brute Fo
         buffer += pdfValues[0][k];
     }
 
-    double mean = buffer / N; //integral
+    double mean = buffer / N; //sum
     double diff = 0;
 
     for(int l = 0; l < pdfValues[0].size(); l++) {
@@ -503,16 +509,12 @@ std::tuple<double, double> DalitzNorm(GooPdf *overallSignal, int N) { //Brute Fo
     return std::make_tuple(integral, sigma);
 }
 
-void runIntegration(int N = 10000,int Nint=100) {
+void runIntegration(int N ,int Nint) {
 
     signalDalitz = makeSignalPdf(0, false);
     std::vector<PdfBase *> comps;
     comps.clear();
     comps.push_back(signalDalitz);
-
-    signalDalitz->copyParams();
-    GOOFIT_INFO("Normalize_value: {}", signalDalitz->normalize());
-
     ProdPdf *overallSignal = new ProdPdf("overallSignal", comps);
 
     double arr[Nint];
@@ -833,13 +835,13 @@ do{
 
 int main(int argc, char **argv) {
 
-    int sample_number;
+    int sample_number = 0;
 
     GooFit::Application app{"D2K3_toy", argc, argv};
     app.add_option("-v,--verbose", verbosity, "Set the verbosity (to 0 for example", true);
     app.add_option("-i,--int", sample_number, "sample number", true)->required();
 
-    size_t begin, end, step;
+    size_t begin, end, step = 0;
     auto ns = app.add_subcommand("st");
     ns->add_option("-b",begin,"initial value");
     ns->add_option("-e",end,"initial value");
@@ -851,9 +853,9 @@ int main(int argc, char **argv) {
     fit->add_option("-n",nbins,"number of bins")->required();
 
 
-    int sample_size, n_integrations;
+    int sample_size, n_integrations = 0;
     auto run = app.add_subcommand("run");
-    run->add_option("-e", sample_size, "sample size")->required();
+    run->add_option("-S", sample_size, "sample size")->required();
 	run->add_option("-N", n_integrations, "Number of integrations")->required();
 
     size_t events = 100000;
