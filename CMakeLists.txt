@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.8)
 
-goofit_add_directory()
+goofit_add_package(NIPS)
 
 goofit_add_executable(D2KKK D2KKK.cu)
 

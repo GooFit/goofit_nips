@@ -688,71 +688,6 @@ void makeToyDalitzPdfPlots(GooPdf *overallSignal, string plotdir = "plots") {
 
 
 
-
-std::vector<std::vector<fptype>> fit_fractions(DalitzPlotPdf* signal, std::vector<fpcomplex> coefs){
-
-    size_t n_res = signal->getDecayInfo().resonances.size();
-    size_t nEntries = signal->getCachedWave(0).size();
-
-    fptype buffer_all = 0;
-    fptype buffer;
-    fpcomplex coef_i;
-    fpcomplex coef_j;
-    fpcomplex cached_i_val;
-    fpcomplex cached_j_val;
-
-    thrust::device_vector<fpcomplex> cached_i;
-    thrust::device_vector<fpcomplex> cached_j;
-    std::vector<vector<fptype>> Amps_int(n_res,std::vector<fptype>(n_res));
-
-    for(size_t i = 0; i < n_res ; i++){
-
-        for(size_t j = 0; j < n_res ; j++){
-
-            buffer =0;
-            cached_i = signal->getCachedWave(i);
-            cached_j = signal->getCachedWave(j);
-            coef_i = coefs[i];
-            coef_j = coefs[j];
-
-
-            buffer += thrust::transform_reduce(
-                    thrust::make_zip_iterator(thrust::make_tuple(cached_i.begin(), cached_j.begin())),
-                    thrust::make_zip_iterator(thrust::make_tuple(cached_i.end(), cached_j.end())),
-                        [coef_i, coef_j] __device__ (thrust::tuple<fpcomplex, fpcomplex> val) {
-                            return (coef_i * thrust::conj<fptype>(coef_j) * thrust::get<0>(val) * thrust::conj<fptype>(thrust::get<1>(val))).real();
-                        },
-                        (fptype)0.0,
-                        thrust::plus<fptype>());
-
-
-            buffer_all += buffer;
-
-            Amps_int[i][j] = (buffer/nEntries);
-
-        }
-
-
-
-    }
-
-    fptype total_PDF = buffer_all/nEntries;
-
-    std::vector<vector<fptype>>  ff(n_res,std::vector<fptype>(n_res));
-
-    for(size_t i = 0; i < n_res ; i++){
-
-        for(size_t j = 0; j< n_res ; j++){
-
-            ff[i][j] = (Amps_int[i][j]/total_PDF);
-        }
-
-    }
-
-    return ff;
-
-}
-
 void PrintFF(std::vector<std::vector<fptype>> ff){
 
     size_t nEntries = signalDalitz->getCachedWave(0).size();
@@ -836,18 +771,11 @@ void runToyFit(std::string toyFileName,size_t nbins) {
     auto func_min = fitter.fit(); //Minimizer
     makeToyDalitzPdfPlots(overallSignal);
 
-    auto param = fitter.getParams()->Parameters();
-
-    fpcomplex phi_coef(param[0].Value(), param[1].Value());
-    fpcomplex f0X_coef(param[2].Value(), param[3].Value());
-    fpcomplex f0_coef(param[4].Value(), param[5].Value());
-
-    std::vector<fpcomplex> coefs = {phi_coef,f0X_coef,f0_coef};
-
     GOOFIT_INFO("Final Normalization Value: {}", signalDalitz->normalize());
-    auto ff = fit_fractions(signalDalitz,coefs);
-    PrintFF(ff);
 
+    auto ff = signalDalitz->fit_fractions();
+
+    PrintFF(ff);
 }
 
 void FitStudies(std::string toyFileName,size_t nbins) {
