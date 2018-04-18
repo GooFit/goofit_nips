@@ -35,7 +35,7 @@
 #include <goofit/UnbinnedDataSet.h>
 #include <goofit/Variable.h>
 
-#include <goofit/detail/Style.h>
+#include <goofit/utilities/Style.h>
 #include <goofit/PDFs/physics/DalitzPlotter.h>
 
 #include <Eigen/Dense>
