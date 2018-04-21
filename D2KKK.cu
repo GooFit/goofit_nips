@@ -806,12 +806,7 @@ void FitStudies(std::string toyFileName,size_t nbins) {
 
     auto func_min = fitter.fit(); //Minimizer
 
-
     auto param = fitter.getParams()->Parameters();
-
-    fpcomplex phi_coef(param[0].Value(), param[1].Value());
-    fpcomplex f0X_coef(param[2].Value(), param[3].Value());
-    fpcomplex f0_coef(param[4].Value(), param[5].Value());
 
     saveParameters(param,func_min.Fval(),nbins,signalDalitz->normalize());
 }
@@ -827,7 +822,7 @@ do{
     FitStudies(toyFileName,begin);
     begin+=step;
 
-}while(begin < end);
+}while(begin != end);
 
     GOOFIT_INFO("End !");
 }
